@@ -1,6 +1,0 @@
-chat_server
-face_api
-face_server
-manage_api
-onnx_chat
-shared
