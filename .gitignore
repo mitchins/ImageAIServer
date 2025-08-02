@@ -1,37 +1,203 @@
 # Gitignore for ImageAIServer
 
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python/
-env/
-venv/
-.env
-.venv
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
 .tox/
+.nox/
 .coverage
 .coverage.*
 .cache
 nosetests.xml
 coverage.xml
-htmlcov/
+*.cover
+*.py,cover
+.hypothesis/
 .pytest_cache/
+cover/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+# .python-version
+
+# pipenv
+#Pipfile.lock
+
+# poetry
+#poetry.lock
+
+# pdm
+#pdm.lock
+.pdm.toml
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
 .mypy_cache/
 .dmypy.json
-.ruff_cache/
+dmypy.json
 
-# IDEs
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# PyCharm
 .idea/
 .vscode/
+*.swp
+*.swo
+*~
 
-# OS generated files
+# OS-specific files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
 .Trashes
+ehthumbs.db
 Thumbs.db
 
+# Model files and cache
+*.onnx
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.json
+*.model
+models/
+.cache/
+torch_cache/
+onnx_model_cache/
+
+# HuggingFace cache (commented - might be symlinked)
+# ~/.cache/huggingface/
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Test artifacts
+test_outputs/
+test_results/
+test_images/
+test_*.png
+test_*.jpg
+test_*.jpeg
+
+# Build artifacts
+build/
+dist/
+
 # Docker
-*.log
+.dockerignore
+
+# Local development
+local_config.py
+local_settings.py
+.env.local
+
+# Coverage reports
+htmlcov/
+
+# Ruff cache
+.ruff_cache/
+build/**/*
