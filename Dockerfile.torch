@@ -1,0 +1,83 @@
+# ImageAIServer with PyTorch - Full Featured
+# Provides ONNX + PyTorch models including SmolVLM, Llama, etc.
+# Size: ~8GB (includes PyTorch ecosystem)
+
+FROM python:3.10-slim AS builder
+
+WORKDIR /app
+
+# Install system dependencies for compilation (including CUDA support)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements files
+COPY requirements.txt requirements-torch.txt ./
+
+# Install base requirements first
+RUN pip install --prefix=/install --no-cache-dir -r requirements.txt
+
+# Install PyTorch (CPU version by default, override with build args)
+ARG TORCH_VERSION="cpu"
+RUN if [ "$TORCH_VERSION" = "cpu" ]; then \
+        pip install --prefix=/install --no-cache-dir -r requirements-torch.txt; \
+    elif [ "$TORCH_VERSION" = "cu118" ]; then \
+        pip install --prefix=/install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118 && \
+        pip install --prefix=/install --no-cache-dir transformers accelerate bitsandbytes auto-gptq autoawq scipy sentencepiece protobuf; \
+    elif [ "$TORCH_VERSION" = "cu121" ]; then \
+        pip install --prefix=/install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 && \
+        pip install --prefix=/install --no-cache-dir transformers accelerate bitsandbytes auto-gptq autoawq scipy sentencepiece protobuf; \
+    fi
+
+# Copy source code and install package
+COPY . .
+RUN pip install --prefix=/install --no-cache-dir .
+
+# Runtime stage
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install runtime system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy installed packages from builder
+COPY --from=builder /install /usr/local
+
+# Copy application code
+COPY . .
+
+# Create cache directory for models
+RUN mkdir -p /app/.cache/huggingface
+ENV HUGGINGFACE_HUB_CACHE=/app/.cache/huggingface
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV BACKEND_TYPE=auto
+ENV TORCH_AVAILABLE=1
+
+# Expose the default port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Labels
+LABEL org.opencontainers.image.title="ImageAIServer with PyTorch"
+LABEL org.opencontainers.image.description="Full-featured AI inference server with ONNX + PyTorch support"
+LABEL org.opencontainers.image.version="1.0"
+LABEL org.opencontainers.image.backend="onnx+pytorch"
+
+# Run the unified server
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

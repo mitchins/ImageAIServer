@@ -180,8 +180,30 @@ async def root():
         
         <!-- Server Status Section -->
         <div class="status">
-            ✅ <strong>Server Status:</strong> Running and healthy
+            ✅ <strong>Server Status:</strong> Running and healthy<br>
+            <div style="margin-top: 0.5rem; font-size: 0.9rem;">
+                <span id="backend-status">Loading backend status...</span>
+            </div>
         </div>
+        
+        <script>
+        // Load backend status
+        fetch('/v1/backends')
+            .then(response => response.json())
+            .then(data => {
+                const onnxStatus = data.backends.onnx.available ? '✅ ONNX' : '❌ ONNX';
+                const pytorchStatus = data.backends.pytorch.available ? '✅ PyTorch' : '❌ PyTorch';
+                const onnxCount = data.backends.onnx.models_count || 0;
+                const pytorchCount = data.backends.pytorch.models_count || 0;
+                
+                document.getElementById('backend-status').innerHTML = 
+                    `<strong>Backends:</strong> ${onnxStatus} (${onnxCount} models), ${pytorchStatus} (${pytorchCount} models)`;
+            })
+            .catch(() => {
+                document.getElementById('backend-status').innerHTML = 
+                    '<strong>Backends:</strong> Status unavailable';
+            });
+        </script>
         
         <!-- Quick Actions Section -->
         <h2 style="margin-top: 2rem; margin-bottom: 1rem; color: #333;">Quick Actions</h2>
@@ -203,8 +225,10 @@ async def root():
         <!-- API Information Section -->
         <h2 style="margin-top: 2rem; margin-bottom: 1rem; color: #333;">API Endpoints</h2>
         <div class="api-endpoints">
-            <div class="endpoint"><strong>POST</strong> /v1/chat/completions <span style="color: #666;">• Vision + text inference</span></div>
+            <div class="endpoint"><strong>POST</strong> /v1/chat/completions <span style="color: #666;">• Vision + text inference (ONNX)</span></div>
+            <div class="endpoint"><strong>POST</strong> /chat-server/v1/chat/completions/torch <span style="color: #666;">• PyTorch models (optional)</span></div>
             <div class="endpoint"><strong>POST</strong> /v1/image/compare_faces <span style="color: #666;">• Face comparison</span></div>
+            <div class="endpoint"><strong>GET</strong> /v1/backends <span style="color: #666;">• Backend availability status</span></div>
             <div class="endpoint"><strong>GET</strong> /v1/models <span style="color: #666;">• List available models</span></div>
             <div class="endpoint"><strong>GET</strong> /health <span style="color: #666;">• Server health check</span></div>
         </div>
@@ -337,6 +361,55 @@ app.mount(
     StaticFiles(directory=STATIC_DIR),
     name="static_manage",
 )
+
+
+@app.get("/v1/backends")
+async def list_backends():
+    """List available model backends and their status."""
+    try:
+        from shared.model_manager import get_model_manager
+        
+        manager = get_model_manager()
+        available_backends = manager.get_available_backends()
+        
+        backend_info = {}
+        for backend_type in ["onnx", "pytorch"]:
+            if backend_type == "onnx":
+                from shared.onnx_loader import ONNX_AVAILABLE
+                available = ONNX_AVAILABLE
+            else:  # pytorch
+                from shared.torch_loader import TORCH_AVAILABLE
+                available = TORCH_AVAILABLE
+            
+            backend_info[backend_type] = {
+                "available": available,
+                "initialized": backend_type in [b.value for b in available_backends],
+                "models_count": 0
+            }
+            
+            if available and backend_type in [b.value for b in available_backends]:
+                # Get model count
+                all_models = manager.list_available_models()
+                from shared.model_manager import BackendType
+                backend_enum = BackendType(backend_type)
+                if backend_enum in all_models:
+                    backend_info[backend_type]["models_count"] = len(all_models[backend_enum])
+        
+        return {
+            "backends": backend_info,
+            "default_selection": "auto",
+            "status": "operational" if len(available_backends) > 0 else "no_backends"
+        }
+    except Exception as e:
+        return {
+            "backends": {
+                "onnx": {"available": False, "initialized": False, "models_count": 0},
+                "pytorch": {"available": False, "initialized": False, "models_count": 0}
+            },
+            "default_selection": "auto",
+            "status": "error",
+            "error": str(e)
+        }
 
 
 @app.get("/v1/models")

@@ -1,0 +1,67 @@
+# ImageAIServer Base - ONNX Only (Lightweight)
+# Provides ONNX vision models, face comparison, and model management
+# Size: ~2GB (vs ~8GB with PyTorch)
+
+FROM python:3.10-slim AS builder
+
+WORKDIR /app
+
+# Install system dependencies for compilation
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy base requirements only
+COPY requirements.txt ./
+RUN pip install --prefix=/install --no-cache-dir -r requirements.txt
+
+# Copy source code and install package  
+COPY . .
+RUN pip install --prefix=/install --no-cache-dir .
+
+# Runtime stage
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install runtime system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy installed packages from builder
+COPY --from=builder /install /usr/local
+
+# Copy application code
+COPY . .
+
+# Create cache directory for models
+RUN mkdir -p /app/.cache/huggingface
+ENV HUGGINGFACE_HUB_CACHE=/app/.cache/huggingface
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV BACKEND_TYPE=onnx
+
+# Expose the default port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Labels
+LABEL org.opencontainers.image.title="ImageAIServer Base"
+LABEL org.opencontainers.image.description="Lightweight ONNX-only AI inference server"
+LABEL org.opencontainers.image.version="1.0"
+LABEL org.opencontainers.image.backend="onnx"
+
+# Run the unified server
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

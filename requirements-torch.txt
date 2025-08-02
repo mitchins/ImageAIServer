@@ -1,0 +1,19 @@
+# Minimal PyTorch backend dependencies (cleaned up for cross-platform compatibility)
+# Install with: pip install -r requirements-torch.txt
+
+# Core PyTorch
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Transformers ecosystem
+transformers>=4.35.0
+accelerate>=0.24.0
+
+# Essential tokenization
+sentencepiece>=0.1.99
+protobuf>=3.20.0
+
+# Note: For quantized models, use GGUF versions instead:
+# - ggml-org/SmolVLM-256M-Instruct-GGUF
+# - lmstudio-community/granite-vision-3.2-2b-GGUF
+# - ollama.com/library/granite3.2-vision:2b

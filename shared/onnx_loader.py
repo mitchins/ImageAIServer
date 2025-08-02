@@ -1,6 +1,6 @@
 """ONNX model loader with support for multi-component models."""
 
-from typing import Dict, Optional, List, Any
+from typing import Dict, Optional, List, Any, Tuple
 import logging
 import numpy as np
 import os
@@ -86,12 +86,13 @@ from .model_types import (
     REFERENCE_MODELS, MODEL_QUANT_CONFIGS, get_curated_model_config, get_available_model_quants,
     get_smallest_quant_for_model
 )
+from .model_backend import ModelLoader, InferenceEngine
 
 
 logger = logging.getLogger(__name__)
 
 
-class ONNXModelLoader:
+class ONNXModelLoader(ModelLoader):
     """Loader for multi-component ONNX models."""
     
     def __init__(self):
@@ -99,7 +100,7 @@ class ONNXModelLoader:
         self.tokenizers_cache: Dict[str, AutoTokenizer] = {}
         self.configs_cache: Dict[str, ONNXModelConfig] = {}
     
-    def parse_model_name(self, name: str, default_file: str = "model.onnx") -> tuple[str, str]:
+    def parse_model_name(self, name: str, default_file: str = "model.onnx") -> Tuple[str, str]:
         """Split model identifier into HF repo and filename."""
         if ":" in name:
             repo_id, filename = (name.split(":", 1) + [default_file])[:2]
@@ -112,6 +113,22 @@ class ONNXModelLoader:
                 repo_id = name
                 filename = default_file
         return repo_id, filename
+    
+    def download_model_files(self, repo_id: str, **kwargs) -> Dict[str, str]:
+        """Download model files and return paths."""
+        # Get config for the model
+        config = get_onnx_model_config(repo_id)
+        if config is None:
+            raise ValueError(f"No ONNX configuration found for {repo_id}")
+        
+        # Download auxiliary files
+        self.download_auxiliary_files(repo_id)
+        
+        # Extract quantization if specified in kwargs
+        quant_suffix = kwargs.get('quantization', '')
+        
+        # Download components
+        return self.download_components(repo_id, config, quant_suffix)
     
     def extract_quantization_suffix(self, filename: str) -> str:
         """Extract quantization suffix from filename."""
@@ -390,13 +407,12 @@ class ONNXModelLoader:
         return sessions, tokenizer, config
 
 
-class ONNXInferenceEngine:
+class ONNXInferenceEngine(InferenceEngine):
     """Inference engine for ONNX models."""
     
     def __init__(self, sessions: Dict[str, Any], tokenizer: AutoTokenizer, config: ONNXModelConfig):
+        super().__init__(sessions, tokenizer, config)
         self.sessions = sessions
-        self.tokenizer = tokenizer
-        self.config = config
         self.current_vision_features = None  # Initialize vision features storage
         
         # Handle different model architectures
@@ -1314,3 +1330,51 @@ class ONNXInferenceEngine:
             pass
             
         return inputs_embeds
+    
+    def encode_text(self, text: str) -> np.ndarray:
+        """Encode text to embeddings using ONNX model."""
+        # Tokenize input
+        inputs = self.tokenizer(text, return_tensors='np')
+        input_ids = inputs['input_ids']
+        
+        # Get embeddings based on architecture
+        if self.embed_model is not None:
+            # Use embed model
+            embed_outputs = self.embed_model.run(None, {'input_ids': input_ids})
+            embeddings = embed_outputs[0]
+            # Average pool across sequence length
+            embeddings = np.mean(embeddings, axis=1)
+        elif self.prepare_inputs_embeds_model is not None:
+            # Use prepare_inputs_embeds
+            image_features = np.zeros((0, 3072), dtype=np.float32)
+            embed_inputs = {
+                'input_ids': input_ids,
+                'image_features': image_features
+            }
+            embed_outputs = self.prepare_inputs_embeds_model.run(None, embed_inputs)
+            embeddings = embed_outputs[0]
+            # Average pool across sequence length
+            embeddings = np.mean(embeddings, axis=1)
+        elif self.model is not None:
+            # Single model - run inference and extract hidden states
+            model_inputs = {'input_ids': input_ids}
+            if 'attention_mask' in self.model_input_names:
+                model_inputs['attention_mask'] = np.ones_like(input_ids)
+            outputs = self.model.run(None, model_inputs)
+            # Use logits as a proxy for embeddings (not ideal but works)
+            logits = outputs[0]
+            embeddings = np.mean(logits, axis=(1, 2))  # Average over sequence and vocab
+        else:
+            raise ValueError("No embedding model available")
+        
+        return embeddings
+    
+    def supports_modality(self, modality: str) -> bool:
+        """Check if engine supports specific modality."""
+        if modality == "text":
+            return True
+        elif modality == "vision":
+            return self.config.has_vision or self.vision_model is not None
+        elif modality == "audio":
+            return self.audio_model is not None
+        return False

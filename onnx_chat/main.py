@@ -14,6 +14,7 @@ from shared.model_types import (
     ReferenceModel, Quantization, REFERENCE_MODELS, 
     get_available_model_quants, get_smallest_quant_for_model
 )
+from shared.model_manager import get_model_manager, BackendType
 
 # Import ONNX components with explicit mock handling
 # Check for explicit mock environment variable
@@ -65,9 +66,8 @@ config = load_config()
 MODEL_PATH = config.model_path
 DEFAULT_FILE = os.getenv("ONNX_FILE_NAME", "model.onnx")
 
-# Global model loader
-model_loader = ONNXModelLoader()
-engines_cache: dict[str, ONNXInferenceEngine] = {}
+# Global model manager
+model_manager = get_model_manager()
 
 import logging
 
@@ -125,7 +125,8 @@ def validate_model_name(model_name: str) -> str:
     )
 
 # Helper to get inference engine
-async def get_inference_engine(model_name: str) -> ONNXInferenceEngine:
+async def get_inference_engine(model_name: str):
+    """Get inference engine for a model, preferring ONNX backend."""
     # Validate model first
     validated_repo_id = validate_model_name(model_name)
     
@@ -150,20 +151,22 @@ async def get_inference_engine(model_name: str) -> ONNXInferenceEngine:
         # Fall back to legacy approach
         model_quant_key = f"{validated_repo_id}:q4"
     
-    if model_quant_key not in engines_cache:
-        if ONNX_LOADER_AVAILABLE:
-            sessions, tokenizer, config = model_loader.load_model(model_quant_key)
-            engines_cache[model_quant_key] = ONNXInferenceEngine(sessions, tokenizer, config)
-        else:
-            # Mock engine for testing
-            engines_cache[model_quant_key] = ONNXInferenceEngine()
-    return engines_cache[model_quant_key]
+    # Use model manager to load the model with ONNX backend preference
+    return model_manager.load_model(model_quant_key, backend=BackendType.ONNX)
 
 
-# Generate text using ONNX inference engine
+# Generate text using inference engine
 async def generate_text(text: str, model_name: str, max_tokens: int = 100, images: List[str] | None = None, audio: List[str] | None = None) -> str:
-    engine = await get_inference_engine(model_name)
-    return engine.generate_text(text, max_tokens, images, audio)
+    """Generate text using the model manager."""
+    # Use the model manager directly for generation
+    return model_manager.generate_text(
+        model_name=model_name,
+        text=text,
+        max_tokens=max_tokens,
+        images=images,
+        audio=audio,
+        backend=BackendType.ONNX  # Prefer ONNX for this server
+    )
 
 
 # Legacy functions for backward compatibility with old tests

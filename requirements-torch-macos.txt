@@ -1,0 +1,26 @@
+# PyTorch backend dependencies for macOS
+# Install with: pip install -r requirements-torch-macos.txt
+
+# PyTorch for macOS (CPU and Metal Performance Shaders support)
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Transformers and related packages
+transformers>=4.35.0
+accelerate>=0.24.0
+
+# Quantization support (macOS compatible)
+# Note: bitsandbytes has limited macOS support, use with caution
+# bitsandbytes>=0.41.0  # Commented out due to macOS compatibility issues
+
+# Skip AWQ on macOS as it requires CUDA (GPTQ is obsolete anyway)
+# autoawq>=0.1.6   # CUDA-dependent, skip on macOS
+
+# Additional ML packages
+scipy>=1.10.0
+sentencepiece>=0.1.99
+protobuf>=3.20.0
+
+# macOS-specific optimizations
+# For M1/M2 Macs, you may want to install PyTorch with Metal Performance Shaders:
+# pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu

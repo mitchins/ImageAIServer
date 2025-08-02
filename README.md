@@ -12,10 +12,21 @@ pip install imageaiserver
 ```
 
 #### Docker Installation
+
+**Multi-tier Docker strategy available:**
+
 ```bash
-docker build -t imageaiserver .
-docker run -p 8000:8000 imageaiserver
+# Base (ONNX only, ~2GB)
+docker-compose --profile base up -d
+
+# Full (ONNX + PyTorch, ~8GB) 
+docker-compose --profile torch up -d
+
+# GPU (ONNX + PyTorch + CUDA, requires nvidia-docker)
+docker-compose --profile gpu up -d
 ```
+
+**📖 Detailed Docker Guide:** [docs/DOCKER.md](docs/DOCKER.md)
 
 #### Development Installation
 ```bash
@@ -49,20 +60,42 @@ imageaiserver
 - **Multimodal support** – text, vision, and multi-image analysis
 - **Multiple quantizations** – FP16, Q4, INT8 for performance tuning
 - **Dynamic model loading** – automatic model discovery and caching
+- **Optional PyTorch backend** – support for larger models when PyTorch is installed
 
 ### Supported Models
+
+#### ONNX Models (Always Available)
 - **Qwen2-VL-2B-Instruct** – 8 quantization variants
 - **Gemma-3n-E2B-it-ONNX** – 3 quantization variants  
 - **Phi-3.5-vision-instruct** – 2 quantization variants
+- **SmolVLM-256M-Instruct** – 8 quantization variants (ultra-lightweight)
+
+#### PyTorch Models (Optional - requires `pip install -r requirements-torch.txt`)
+- **SmolVLM Series** – 256M and 500M ultra-lightweight vision-language models
+
+**For quantized models, use GGUF versions:**
+- `ggml-org/SmolVLM-256M-Instruct-GGUF` (Q8_0: 175MB, F16: 328MB)
+- `lmstudio-community/granite-vision-3.2-2b-GGUF` (various quantizations)
 
 ### Configuration
 ```bash
-# Basic usage
-python -m apps.onnx_chat.main
+# Basic usage (ONNX models)
+python -m onnx_chat.main
 
 # Custom configuration
 MODEL_NAME="Qwen2-VL-2B-Instruct/Q4" python -m onnx_chat.main
 ONNX_CHAT_HOST=0.0.0.0 ONNX_CHAT_PORT=8080 python -m onnx_chat.main
+
+# Enable PyTorch backend (minimal - SmolVLM only)
+pip install -r requirements-torch.txt
+
+# Access PyTorch models via chat-server endpoints
+# GET /chat-server/models - List available PyTorch models
+# POST /chat-server/v1/chat/completions/torch - Use PyTorch models
+
+# Test PyTorch backend with SmolVLM
+python tests/manual/test_pizza_recognition.py  # Pizza recognition test
+python scripts/test_backends.py                # Backend detection test
 ```
 
 **📖 Detailed Documentation:** [onnx_chat/README.md](onnx_chat/README.md)
@@ -156,11 +189,18 @@ ImageAIServer/
 │   ├── main.py           # Face server entry point
 │   ├── presets.py        # Model presets configuration
 │   └── README.md         # Detailed face documentation
+├── chat_server/          # Unified chat endpoints
+│   ├── router.py         # Combined ONNX + PyTorch routing
+│   └── torch_router.py   # Optional PyTorch endpoints
 ├── manage_api/           # Model management API
 │   └── router.py         # Management endpoints
 ├── shared/               # Shared utilities
 │   ├── unified_model_registry.py  # Model discovery and tracking
 │   ├── model_types.py    # Model configurations
+│   ├── model_backend.py  # Abstract backend interfaces
+│   ├── model_manager.py  # Backend selection strategy
+│   ├── onnx_loader.py    # ONNX implementation
+│   ├── torch_loader.py   # PyTorch implementation (optional)
 │   └── manage_cache.py   # HuggingFace cache utilities
 └── static/               # Web interface assets
     └── manage/           # Model management UI
@@ -168,10 +208,16 @@ ImageAIServer/
 
 ### Communication Flow
 ```
-Client Applications → HTTP API → Local ONNX Server → Models
-         ↓                ↓            ↓
-    Web Interface → Management API → Model Registry
+Client Applications → HTTP API → Model Manager → Backend Selection
+         ↓                ↓            ↓                ↓
+    Web Interface → Management API → Model Registry → ONNX/PyTorch
 ```
+
+### Backend Architecture
+- **Strategy Pattern**: Model Manager selects appropriate backend
+- **Abstract Interfaces**: Common API for ONNX and PyTorch
+- **Lazy Loading**: PyTorch only loaded when needed
+- **Fallback Support**: Automatic failover between backends
 
 ---
 
@@ -229,6 +275,16 @@ FACE_MODEL_PROVIDERS="CUDAExecutionProvider,CPUExecutionProvider"
 - **Minimum**: 8GB RAM, CPU inference
 - **Recommended**: 16GB+ RAM, dedicated GPU
 - **Storage**: 2-10GB per model (varies by quantization)
+
+---
+
+## 📚 Documentation
+
+- **[docs/](docs/)** - Complete technical documentation
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System design and architecture review
+- **[docs/PYTORCH_BACKEND.md](docs/PYTORCH_BACKEND.md)** - PyTorch backend integration guide  
+- **[docs/DOCKER.md](docs/DOCKER.md)** - Multi-tier Docker deployment strategies
+- **[tests/README.md](tests/README.md)** - Testing strategies and guidelines
 
 ---
 
