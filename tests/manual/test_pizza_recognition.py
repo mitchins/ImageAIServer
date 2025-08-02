@@ -96,8 +96,8 @@ def test_pizza_recognition():
         return False
     
     # Import our components
-    from shared.model_manager import get_model_manager, BackendType
-    from shared.torch_loader import TORCH_AVAILABLE
+    from imageai_server.shared.model_manager import get_model_manager, BackendType
+    from imageai_server.shared.torch_loader import TORCH_AVAILABLE
     
     if not TORCH_AVAILABLE:
         print("❌ PyTorch backend not available")

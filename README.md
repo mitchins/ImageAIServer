@@ -37,21 +37,21 @@ pip install -e .
 
 ### Run Individual Services
 ```bash
-# ONNX Chat Server (vision-language models)
-python -m onnx_chat.main
+# Multimodal Chat Server (vision-language models)
+python -m imageai_server.multimodal_chat.main
 
 # Face Comparison API  
-PRESET=photo uvicorn face_api.main:app --port 7860
+PRESET=photo uvicorn imageai_server.face_api.main:app --port 7860
 
 # Unified Server (all services + model management)
-uvicorn main:app --host 0.0.0.0 --port 8000
+uvicorn imageai_server.main:app --host 0.0.0.0 --port 8000
 # Or using the CLI command:
 imageaiserver
 ```
 
 ---
 
-## 🧠 ONNX Chat Server
+## 🧠 Multimodal Chat Server
 
 **Local vision-language model inference** with OpenAI-compatible API.
 
@@ -80,11 +80,11 @@ imageaiserver
 ### Configuration
 ```bash
 # Basic usage (ONNX models)
-python -m onnx_chat.main
+python -m imageai_server.multimodal_chat.main
 
 # Custom configuration
-MODEL_NAME="Qwen2-VL-2B-Instruct/Q4" python -m onnx_chat.main
-ONNX_CHAT_HOST=0.0.0.0 ONNX_CHAT_PORT=8080 python -m onnx_chat.main
+MODEL_NAME="Qwen2-VL-2B-Instruct/Q4" python -m imageai_server.multimodal_chat.main
+ONNX_CHAT_HOST=0.0.0.0 ONNX_CHAT_PORT=8080 python -m imageai_server.multimodal_chat.main
 
 # Enable PyTorch backend (minimal - SmolVLM only)
 pip install -r requirements-torch.txt
@@ -98,7 +98,7 @@ python tests/manual/test_pizza_recognition.py  # Pizza recognition test
 python scripts/test_backends.py                # Backend detection test
 ```
 
-**📖 Detailed Documentation:** [onnx_chat/README.md](onnx_chat/README.md)
+**📖 Detailed Documentation:** [imageai_server/multimodal_chat/README.md](imageai_server/multimodal_chat/README.md)
 
 ---
 
@@ -136,7 +136,7 @@ EMBEDDER_MODEL_PATH=Xenova/clip-vit-base-patch32 \
 uvicorn face_api.main:app
 ```
 
-**📖 Detailed Documentation:** [face_api/README.md](face_api/README.md)
+**📖 Detailed Documentation:** [imageai_server/face_api/README.md](imageai_server/face_api/README.md)
 
 ---
 
@@ -166,7 +166,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 imageaiserver
 
 # Access services:
-# - Chat API: http://localhost:8000/onnx-chat/
+# - Chat API: http://localhost:8000/multimodal-chat/
 # - Face API: http://localhost:8000/face-server/  
 # - Model Management: http://localhost:8000/manage/ui/
 # - API Documentation: http://localhost:8000/docs
@@ -181,29 +181,33 @@ imageaiserver
 ### Service Structure
 ```
 ImageAIServer/
-├── main.py                # Unified server entry point
-├── onnx_chat/            # Vision-language model server
-│   ├── main.py           # Chat server entry point  
-│   └── README.md         # Detailed chat documentation
-├── face_api/             # Face comparison service
-│   ├── main.py           # Face server entry point
-│   ├── presets.py        # Model presets configuration
-│   └── README.md         # Detailed face documentation
-├── chat_server/          # Unified chat endpoints
-│   ├── router.py         # Combined ONNX + PyTorch routing
-│   └── torch_router.py   # Optional PyTorch endpoints
-├── manage_api/           # Model management API
-│   └── router.py         # Management endpoints
-├── shared/               # Shared utilities
-│   ├── unified_model_registry.py  # Model discovery and tracking
-│   ├── model_types.py    # Model configurations
-│   ├── model_backend.py  # Abstract backend interfaces
-│   ├── model_manager.py  # Backend selection strategy
-│   ├── onnx_loader.py    # ONNX implementation
-│   ├── torch_loader.py   # PyTorch implementation (optional)
-│   └── manage_cache.py   # HuggingFace cache utilities
-└── static/               # Web interface assets
-    └── manage/           # Model management UI
+├── imageai_server/           # Main package
+│   ├── main.py              # Unified server entry point
+│   ├── multimodal_chat/     # Vision-language model server (renamed)
+│   │   ├── main.py          # Chat server entry point  
+│   │   └── README.md        # Detailed chat documentation
+│   ├── face_api/            # Face comparison service
+│   │   ├── main.py          # Face server entry point
+│   │   ├── presets.py       # Model presets configuration
+│   │   └── README.md        # Detailed face documentation
+│   ├── chat_server/         # Unified chat endpoints
+│   │   ├── router.py        # Combined ONNX + PyTorch routing
+│   │   └── torch_router.py  # Optional PyTorch endpoints
+│   ├── manage_api/          # Model management API
+│   │   └── router.py        # Management endpoints
+│   ├── shared/              # Shared utilities
+│   │   ├── unified_model_registry.py  # Model discovery and tracking
+│   │   ├── model_types.py   # Model configurations
+│   │   ├── model_backend.py # Abstract backend interfaces
+│   │   ├── model_manager.py # Backend selection strategy
+│   │   ├── onnx_loader.py   # ONNX implementation
+│   │   ├── torch_loader.py  # PyTorch implementation (optional)
+│   │   └── manage_cache.py  # HuggingFace cache utilities
+│   └── static/              # Web interface assets
+│       └── manage/          # Model management UI
+├── tests/                   # Test suite
+├── docs/                    # Documentation
+└── scripts/                 # Build utilities
 ```
 
 ### Communication Flow

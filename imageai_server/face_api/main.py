@@ -11,7 +11,7 @@ try:
     import onnxruntime as ort
 except Exception:  # pragma: no cover - optional dependency
     ort = None
-from shared.hf_utils import download_model
+from ..shared.hf_utils import download_model
 
 # Requires: pip install dghs-imgutils
 try:
@@ -280,7 +280,7 @@ def main():  # pragma: no cover
     app.state.threshold = DEFAULT_THRESHOLD
 
     uvicorn.run(
-        "apps.face_api.main:app",
+        "imageai_server.face_api.main:app",
         host=args.host,
         port=args.port,
         log_level=config.log_level,

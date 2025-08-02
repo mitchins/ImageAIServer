@@ -5,8 +5,8 @@ from pydantic import BaseModel, ValidationError
 from typing import List, Dict, Any, Optional
 import logging
 
-from shared.model_manager import get_model_manager, BackendType
-from shared.torch_loader import TORCH_AVAILABLE
+from ..shared.model_manager import get_model_manager, BackendType
+from ..shared.torch_loader import TORCH_AVAILABLE
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

@@ -107,7 +107,7 @@ class TestGemma3nOnnxIntegration:
     
     def test_onnx_backend_available(self):
         """Test that ONNX backend is available."""
-        from shared.onnx_backend import create_onnx_backend
+        from imageai_server.shared.onnx_backend import create_onnx_backend
         
         backend = create_onnx_backend()
         assert backend is not None
@@ -117,8 +117,8 @@ class TestGemma3nOnnxIntegration:
     
     def test_gemma3n_in_supported_models(self):
         """Test Gemma-3n is in ONNX supported models."""
-        from shared.model_backend import BackendConfig
-        from shared.onnx_backend import ONNXBackend
+        from imageai_server.shared.model_backend import BackendConfig
+        from imageai_server.shared.onnx_backend import ONNXBackend
         
         config = BackendConfig(backend_type="onnx")
         backend = ONNXBackend(config)
@@ -130,9 +130,9 @@ class TestGemma3nOnnxIntegration:
     @pytest.mark.slow
     def test_load_gemma3n_q4_mixed(self):
         """Test loading Gemma-3n with Q4_MIXED quantization."""
-        from shared.model_backend import BackendConfig
-        from shared.onnx_backend import ONNXBackend
-        from shared.onnx_loader import ONNXModelLoader
+        from imageai_server.shared.model_backend import BackendConfig
+        from imageai_server.shared.onnx_backend import ONNXBackend
+        from imageai_server.shared.onnx_loader import ONNXModelLoader
         
         # Configure Q4_MIXED
         config = BackendConfig(
@@ -165,7 +165,7 @@ class TestGemma3nOnnxIntegration:
     @pytest.mark.slow
     def test_text_generation(self):
         """Test text-only generation with Gemma-3n."""
-        from shared.model_manager import get_model_manager, BackendType
+        from imageai_server.shared.model_manager import get_model_manager, BackendType
         
         manager = get_model_manager()
         
@@ -189,7 +189,7 @@ class TestGemma3nOnnxIntegration:
     @pytest.mark.slow
     def test_vision_generation(self):
         """Test vision + text generation with Gemma-3n."""
-        from shared.model_manager import get_model_manager, BackendType
+        from imageai_server.shared.model_manager import get_model_manager, BackendType
         
         manager = get_model_manager()
         
@@ -221,7 +221,7 @@ class TestGemma3nOnnxIntegration:
     @pytest.mark.slow
     def test_pizza_recognition(self):
         """Test pizza recognition without food hints in prompt."""
-        from shared.model_manager import get_model_manager, BackendType
+        from imageai_server.shared.model_manager import get_model_manager, BackendType
         
         manager = get_model_manager()
         
@@ -282,8 +282,8 @@ class TestGemma3nOnnxIntegration:
     @pytest.mark.slow
     def test_quantization_variants(self):
         """Test different Gemma-3n quantization variants."""
-        from shared.model_backend import BackendConfig
-        from shared.onnx_backend import ONNXBackend
+        from imageai_server.shared.model_backend import BackendConfig
+        from imageai_server.shared.onnx_backend import ONNXBackend
         
         variants = [
             "Gemma-3n-E2B-it-ONNX/Q4_MIXED",
@@ -311,7 +311,7 @@ class TestGemma3nOnnxIntegration:
     @pytest.mark.slow
     def test_multimodal_capabilities(self):
         """Test Gemma-3n multimodal capabilities."""
-        from shared.model_manager import get_model_manager, BackendType
+        from imageai_server.shared.model_manager import get_model_manager, BackendType
         
         manager = get_model_manager()
         
@@ -346,7 +346,7 @@ class TestGemma3nOnnxIntegration:
     
     def test_model_config_compatibility(self):
         """Test Gemma-3n model configuration compatibility."""
-        from shared.model_types import REFERENCE_MODELS, ReferenceModel
+        from imageai_server.shared.model_types import REFERENCE_MODELS, ReferenceModel
         
         # Check if the reference model exists
         gemma_spec = REFERENCE_MODELS.get(ReferenceModel.GEMMA_3N_E2B)

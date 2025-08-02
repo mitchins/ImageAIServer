@@ -6,8 +6,8 @@ from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.openapi.docs import get_swagger_ui_html
 import importlib
 import pkgutil
-from shared.manage_cache import list_cached_entries
-from shared.model_types import ModelType
+from .shared.manage_cache import list_cached_entries
+from .shared.model_types import ModelType
 app = FastAPI(
     title="ImageAIServer API", 
     version="1.0.0",
@@ -29,9 +29,9 @@ def register_routers():
             (app_path / 'router.py').exists()):
             
             try:
-                # Import the router module
-                module_name = f"{app_path.name}.router"
-                module = importlib.import_module(module_name)
+                # Import the router module using relative import
+                module_name = f".{app_path.name}.router"
+                module = importlib.import_module(module_name, package=__package__)
                 
                 if hasattr(module, 'router'):
                     router = module.router
@@ -41,10 +41,10 @@ def register_routers():
                     app.include_router(router, prefix=f"/{service_name}", tags=[service_name])
                     print(f"✅ Registered {service_name} router at /{service_name}")
                     
-                    # Special case: ONNX chat also gets root-level OpenAI compatibility
-                    if app_path.name == 'onnx_chat':
+                    # Special case: multimodal chat also gets root-level OpenAI compatibility
+                    if app_path.name == 'multimodal_chat':
                         app.include_router(router, tags=["openai-compatible"])
-                        print(f"✅ Registered onnx-chat router at root level for OpenAI compatibility")
+                        print(f"✅ Registered multimodal-chat router at root level for OpenAI compatibility")
                         
             except Exception as e:
                 print(f"❌ Failed to register {app_path.name} router: {e}")
@@ -55,7 +55,7 @@ register_routers()
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """Root endpoint with helpful navigation to all UIs."""
-    return HTMLResponse(content=f"""
+    return HTMLResponse(content="""
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -63,22 +63,22 @@ async def root():
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ComfyAI Server</title>
     <style>
-        body {{ 
+        body { 
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: #f8f9fa;
             margin: 0;
             padding: 0;
             min-height: 100vh;
-        }}
+        }
         
-        .main-container {{ 
+        .main-container { 
             max-width: 1000px;
             margin: 2rem auto;
             padding: 0 2rem;
             text-align: center;
-        }}
+        }
         
-        h1 {{ 
+        h1 { 
             font-size: 2.5rem; 
             margin-bottom: 1rem; 
             color: #333;
@@ -86,22 +86,22 @@ async def root():
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-        }}
+        }
         
-        .subtitle {{ 
+        .subtitle { 
             color: #666; 
             font-size: 1.2rem; 
             margin-bottom: 2rem; 
-        }}
+        }
         
-        .links {{ 
+        .links { 
             display: grid; 
             gap: 1.5rem; 
             margin: 2rem 0; 
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-        }}
+        }
         
-        .link {{ 
+        .link { 
             display: block; 
             padding: 1.5rem 2rem; 
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -111,34 +111,34 @@ async def root():
             transition: all 0.3s ease; 
             font-size: 1.1rem;
             box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-        }}
+        }
         
-        .link:hover {{ 
+        .link:hover { 
             transform: translateY(-4px);
             box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
-        }}
+        }
         
-        .link strong {{ 
+        .link strong { 
             display: block; 
             font-size: 1.3rem; 
             margin-bottom: 0.5rem; 
-        }}
+        }
         
-        .link small {{ 
+        .link small { 
             opacity: 0.9; 
             font-size: 1rem; 
-        }}
+        }
         
-        .status {{ 
+        .status { 
             margin-top: 2rem; 
             padding: 1rem 0; 
             color: #155724;
             border-left: 4px solid #28a745;
             padding-left: 1rem;
             text-align: left;
-        }}
+        }
         
-        .api-endpoints {{ 
+        .api-endpoints { 
             margin-top: 2rem; 
             text-align: left; 
             color: #495057;
@@ -146,29 +146,29 @@ async def root():
             font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
             border-top: 1px solid #e9ecef;
             padding-top: 1.5rem;
-        }}
+        }
         
-        .api-endpoints strong {{ 
+        .api-endpoints strong { 
             color: #333; 
             display: block; 
             margin-bottom: 0.5rem; 
-        }}
+        }
         
-        .endpoint {{ 
+        .endpoint { 
             margin: 0.5rem 0; 
             padding: 0.3rem 0; 
             color: #6f42c1; 
-        }}
+        }
         
-        @media (max-width: 768px) {{
-            .main-container {{ 
+        @media (max-width: 768px) {
+            .main-container { 
                 margin: 1rem; 
                 padding: 1.5rem; 
-            }}
-            .links {{ 
+            }
+            .links { 
                 grid-template-columns: 1fr; 
-            }}
-        }}
+            }
+        }
     </style>
 </head>
 <body>
@@ -258,15 +258,15 @@ async def custom_swagger_ui_html():
     <title>ImageAIServer API Documentation</title>
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui.css" />
     <style>
-        body {{ margin: 0; padding: 0; }}
-        .comfyai-nav {{
+        body { margin: 0; padding: 0; }
+        .comfyai-nav {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             position: sticky;
             top: 0;
             z-index: 1000;
-        }}
-        .nav-container {{
+        }
+        .nav-container {
             max-width: 1200px;
             margin: 0 auto;
             display: flex;
@@ -274,8 +274,8 @@ async def custom_swagger_ui_html():
             align-items: center;
             padding: 0 1rem;
             height: 60px;
-        }}
-        .nav-brand .brand-link {{
+        }
+        .nav-brand .brand-link {
             color: white;
             text-decoration: none;
             font-size: 1.5rem;
@@ -283,14 +283,14 @@ async def custom_swagger_ui_html():
             display: flex;
             align-items: center;
             gap: 0.5rem;
-        }}
-        .nav-brand .brand-link:hover {{ color: rgba(255,255,255,0.9); }}
-        .nav-links {{
+        }
+        .nav-brand .brand-link:hover { color: rgba(255,255,255,0.9); }
+        .nav-links {
             display: flex;
             gap: 0.5rem;
             align-items: center;
-        }}
-        .nav-link {{
+        }
+        .nav-link {
             color: rgba(255,255,255,0.9);
             text-decoration: none;
             padding: 0.5rem 1rem;
@@ -298,18 +298,18 @@ async def custom_swagger_ui_html():
             transition: all 0.3s ease;
             font-size: 0.9rem;
             white-space: nowrap;
-        }}
-        .nav-link:hover {{
+        }
+        .nav-link:hover {
             background: rgba(255,255,255,0.1);
             color: white;
             transform: translateY(-1px);
-        }}
-        .nav-link.active {{
+        }
+        .nav-link.active {
             background: rgba(255,255,255,0.2);
             color: white;
-        }}
-        #swagger-ui {{ padding-top: 0; }}
-        .swagger-ui .topbar {{ display: none; }}
+        }
+        #swagger-ui { padding-top: 0; }
+        .swagger-ui .topbar { display: none; }
     </style>
 </head>
 <body>
@@ -331,7 +331,7 @@ async def custom_swagger_ui_html():
     
     <script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-bundle.js"></script>
     <script>
-        const ui = SwaggerUIBundle({{
+        const ui = SwaggerUIBundle({
             url: '/openapi.json',
             dom_id: '#swagger-ui',
             presets: [
@@ -343,7 +343,7 @@ async def custom_swagger_ui_html():
             showExtensions: true,
             showCommonExtensions: true,
             tryItOutEnabled: true
-        }});
+        });
     </script>
 </body>
 </html>
@@ -367,7 +367,7 @@ app.mount(
 async def list_backends():
     """List available model backends and their status."""
     try:
-        from shared.model_manager import get_model_manager
+        from .shared.model_manager import get_model_manager
         
         manager = get_model_manager()
         available_backends = manager.get_available_backends()
@@ -375,10 +375,10 @@ async def list_backends():
         backend_info = {}
         for backend_type in ["onnx", "pytorch"]:
             if backend_type == "onnx":
-                from shared.onnx_loader import ONNX_AVAILABLE
+                from .shared.onnx_loader import ONNX_AVAILABLE
                 available = ONNX_AVAILABLE
             else:  # pytorch
-                from shared.torch_loader import TORCH_AVAILABLE
+                from .shared.torch_loader import TORCH_AVAILABLE
                 available = TORCH_AVAILABLE
             
             backend_info[backend_type] = {
@@ -390,7 +390,7 @@ async def list_backends():
             if available and backend_type in [b.value for b in available_backends]:
                 # Get model count
                 all_models = manager.list_available_models()
-                from shared.model_manager import BackendType
+                from .shared.model_manager import BackendType
                 backend_enum = BackendType(backend_type)
                 if backend_enum in all_models:
                     backend_info[backend_type]["models_count"] = len(all_models[backend_enum])

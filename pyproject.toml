@@ -59,10 +59,10 @@ Repository = "https://github.com/mitchins/ImageAIServer"
 Issues = "https://github.com/mitchins/ImageAIServer/issues"
 
 [project.scripts]
-imageaiserver = "__main__:main"
+imageaiserver = "imageai_server.__main__:main"
 
 [tool.setuptools]
-packages = ["shared", "onnx_chat", "face_api", "manage_api", "face_server", "chat_server"]
+packages = ["imageai_server", "imageai_server.shared", "imageai_server.multimodal_chat", "imageai_server.face_api", "imageai_server.manage_api", "imageai_server.face_server", "imageai_server.chat_server"]
 
 [tool.setuptools.package-data]
 "*" = ["*.html", "*.js", "*.css"]

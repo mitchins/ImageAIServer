@@ -16,7 +16,7 @@ class TestPyTorchBackendSimple(unittest.TestCase):
         """Test PyTorch availability detection."""
         # Test when torch is not available
         with patch('shared.torch_loader.TORCH_AVAILABLE', False):
-            from shared.torch_loader import create_pytorch_backend
+            from imageai_server.shared.torch_loader import create_pytorch_backend
             backend = create_pytorch_backend()
             self.assertIsNone(backend)
             print("✓ Returns None when PyTorch unavailable")
@@ -34,7 +34,7 @@ class TestPyTorchBackendSimple(unittest.TestCase):
         # We can test this without instantiating the backend
         with patch('shared.torch_loader.TORCH_AVAILABLE', True):
             # Import the class to access its methods
-            from shared.torch_loader import PyTorchBackend
+            from imageai_server.shared.torch_loader import PyTorchBackend
             
             # Get the method that returns supported models
             # We can call it directly on the class for testing
@@ -108,7 +108,7 @@ class TestPyTorchBackendSimple(unittest.TestCase):
     
     def test_backend_selection_logic(self):
         """Test backend selection for different models."""
-        from shared.model_types import get_curated_model_config
+        from imageai_server.shared.model_types import get_curated_model_config
         
         # SmolVLM should not be in ONNX curated models
         onnx_config = get_curated_model_config("HuggingFaceTB/SmolVLM-256M-Instruct")

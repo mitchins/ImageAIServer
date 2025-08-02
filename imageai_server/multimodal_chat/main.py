@@ -9,12 +9,12 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ValidationError
 
 from .config import load_config, setup_logging
-from shared.manage_cache import download_file
-from shared.model_types import (
+from ..shared.manage_cache import download_file
+from ..shared.model_types import (
     ReferenceModel, Quantization, REFERENCE_MODELS, 
     get_available_model_quants, get_smallest_quant_for_model
 )
-from shared.model_manager import get_model_manager, BackendType
+from ..shared.model_manager import get_model_manager, BackendType
 
 # Import ONNX components with explicit mock handling
 # Check for explicit mock environment variable
@@ -38,7 +38,7 @@ if USE_MOCK_ONNX:
     print("Using mock ONNX components for testing")
 else:
     try:
-        from shared.onnx_loader import ONNXModelLoader, ONNXInferenceEngine
+        from ..shared.onnx_loader import ONNXModelLoader, ONNXInferenceEngine
         ONNX_LOADER_AVAILABLE = True
     except ImportError as e:
         print(f"Error: ONNX dependencies not available: {e}")
@@ -264,7 +264,7 @@ def main() -> None:
     args = parser.parse_args()
 
     uvicorn.run(
-        "apps.onnx_chat.main:app",
+        "imageai_server.multimodal_chat.main:app",
         host=args.host,
         port=args.port,
         reload=args.reload,

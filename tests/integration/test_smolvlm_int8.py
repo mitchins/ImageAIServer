@@ -108,7 +108,7 @@ class TestSmolVLMInt8Integration:
     
     def test_pytorch_backend_available(self):
         """Test that PyTorch backend is available."""
-        from shared.torch_loader import TORCH_AVAILABLE, create_pytorch_backend
+        from imageai_server.shared.torch_loader import TORCH_AVAILABLE, create_pytorch_backend
         
         assert TORCH_AVAILABLE, "PyTorch should be available for integration tests"
         
@@ -120,8 +120,8 @@ class TestSmolVLMInt8Integration:
     
     def test_smolvlm_in_supported_models(self):
         """Test SmolVLM is in PyTorch supported models."""
-        from shared.model_backend import BackendConfig
-        from shared.torch_loader import PyTorchBackend
+        from imageai_server.shared.model_backend import BackendConfig
+        from imageai_server.shared.torch_loader import PyTorchBackend
         
         config = BackendConfig(backend_type="pytorch")
         backend = PyTorchBackend(config)
@@ -133,8 +133,8 @@ class TestSmolVLMInt8Integration:
     @pytest.mark.slow
     def test_load_smolvlm_int8(self):
         """Test loading SmolVLM with INT8 quantization."""
-        from shared.model_backend import BackendConfig
-        from shared.torch_loader import PyTorchBackend, PyTorchModelLoader
+        from imageai_server.shared.model_backend import BackendConfig
+        from imageai_server.shared.torch_loader import PyTorchBackend, PyTorchModelLoader
         
         # Configure INT8
         config = BackendConfig(
@@ -171,8 +171,8 @@ class TestSmolVLMInt8Integration:
     @pytest.mark.slow
     def test_text_generation(self):
         """Test text-only generation with SmolVLM."""
-        from shared.torch_loader import PyTorchModelLoader, PyTorchBackend
-        from shared.model_backend import BackendConfig
+        from imageai_server.shared.torch_loader import PyTorchModelLoader, PyTorchBackend
+        from imageai_server.shared.model_backend import BackendConfig
         from transformers import Idefics3ForConditionalGeneration
         
         # Configure backend - force CPU to avoid MPS issues
@@ -219,8 +219,8 @@ class TestSmolVLMInt8Integration:
     @pytest.mark.slow
     def test_vision_generation(self):
         """Test vision + text generation with SmolVLM."""
-        from shared.torch_loader import PyTorchModelLoader, PyTorchBackend
-        from shared.model_backend import BackendConfig
+        from imageai_server.shared.torch_loader import PyTorchModelLoader, PyTorchBackend
+        from imageai_server.shared.model_backend import BackendConfig
         import base64
         import io
         
@@ -279,8 +279,8 @@ class TestSmolVLMInt8Integration:
     @pytest.mark.slow
     def test_pizza_recognition(self):
         """Test pizza recognition without food hints in prompt."""
-        from shared.torch_loader import PyTorchModelLoader, PyTorchBackend
-        from shared.model_backend import BackendConfig
+        from imageai_server.shared.torch_loader import PyTorchModelLoader, PyTorchBackend
+        from imageai_server.shared.model_backend import BackendConfig
         
         # Configure backend - force CPU to avoid MPS issues
         config = BackendConfig(
@@ -366,8 +366,8 @@ class TestSmolVLMInt8Integration:
     @pytest.mark.slow
     def test_memory_efficiency(self):
         """Test memory efficiency of INT8 vs FP32."""
-        from shared.model_backend import BackendConfig
-        from shared.torch_loader import PyTorchBackend, PyTorchModelLoader
+        from imageai_server.shared.model_backend import BackendConfig
+        from imageai_server.shared.torch_loader import PyTorchBackend, PyTorchModelLoader
         
         # Load with INT8
         int8_config = BackendConfig(
@@ -408,8 +408,8 @@ class TestSmolVLMInt8Integration:
     def test_inference_speed(self):
         """Test inference speed with FP16."""
         import time
-        from shared.torch_loader import PyTorchModelLoader, PyTorchBackend
-        from shared.model_backend import BackendConfig
+        from imageai_server.shared.torch_loader import PyTorchModelLoader, PyTorchBackend
+        from imageai_server.shared.model_backend import BackendConfig
         
         # Configure backend - force CPU to avoid MPS issues
         config = BackendConfig(
@@ -464,8 +464,8 @@ class TestSmolVLMInt8Integration:
     
     def test_api_endpoint_compatibility(self):
         """Test that SmolVLM works with API endpoints."""
-        from chat_server.torch_router import TorchChatRequest
-        from shared.model_manager import get_model_manager
+        from imageai_server.chat_server.torch_router import TorchChatRequest
+        from imageai_server.shared.model_manager import get_model_manager
         
         manager = get_model_manager()
         

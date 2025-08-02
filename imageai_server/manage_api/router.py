@@ -6,16 +6,16 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from pydantic import ConfigDict
 
-from shared.manage_cache import (
+from ..shared.manage_cache import (
     list_repo_files,
     list_cached_entries,
     download_file,
     delete_cached_file,
 )
-from shared.unified_model_registry import UnifiedModel, ModelFile
+from ..shared.unified_model_registry import UnifiedModel, ModelFile
 
 # Import and create fresh registry instance
-from shared.unified_model_registry import UnifiedModelRegistry
+from ..shared.unified_model_registry import UnifiedModelRegistry
 registry = UnifiedModelRegistry()
 
 router = APIRouter(prefix="", tags=["manage"])
@@ -249,7 +249,7 @@ async def download_unified_model(req: DownloadModelRequest):
         files_to_download = model.files
         if model.architecture == "multi-component" and req.quantization:
             # Get files for specific quantization from MODEL_QUANT_CONFIGS
-            from shared.model_types import get_curated_model_config
+            from ..shared.model_types import get_curated_model_config
             
             # Map model ID back to config name
             model_name = req.model_id.replace("chat-", "")
@@ -308,7 +308,7 @@ async def delete_unified_model(model_id: str, quantization: Optional[str] = None
         files_to_delete = model.files
         if model.architecture == "multi-component" and quantization:
             # Get files for specific quantization from MODEL_QUANT_CONFIGS
-            from shared.model_types import get_curated_model_config
+            from ..shared.model_types import get_curated_model_config
             
             # Map model ID back to config name
             model_name = model_id.replace("chat-", "")
