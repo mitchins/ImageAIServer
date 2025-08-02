@@ -15,16 +15,16 @@ class TestPyTorchBackendSimple(unittest.TestCase):
     def test_torch_availability_detection(self):
         """Test PyTorch availability detection."""
         # Test when torch is not available
-        with patch('shared.torch_loader.TORCH_AVAILABLE', False):
+        with patch('imageai_server.shared.torch_loader.TORCH_AVAILABLE', False):
             from imageai_server.shared.torch_loader import create_pytorch_backend
             backend = create_pytorch_backend()
             self.assertIsNone(backend)
             print("✓ Returns None when PyTorch unavailable")
         
         # Test when torch is available
-        with patch('shared.torch_loader.TORCH_AVAILABLE', True):
+        with patch('imageai_server.shared.torch_loader.TORCH_AVAILABLE', True):
             with patch.dict('sys.modules', {'torch': Mock(), 'transformers': Mock()}):
-                with patch('shared.torch_loader.PyTorchBackend'):
+                with patch('imageai_server.shared.torch_loader.PyTorchBackend'):
                     backend = create_pytorch_backend()
                     self.assertIsNotNone(backend)
                     print("✓ Creates backend when PyTorch available")
@@ -32,7 +32,7 @@ class TestPyTorchBackendSimple(unittest.TestCase):
     def test_smolvlm_in_model_list(self):
         """Test that SmolVLM is included in supported models list."""
         # We can test this without instantiating the backend
-        with patch('shared.torch_loader.TORCH_AVAILABLE', True):
+        with patch('imageai_server.shared.torch_loader.TORCH_AVAILABLE', True):
             # Import the class to access its methods
             from imageai_server.shared.torch_loader import PyTorchBackend
             

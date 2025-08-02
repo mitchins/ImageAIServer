@@ -362,7 +362,7 @@ class TestGemma3nOnnxIntegration:
     
     def test_api_endpoint_compatibility(self):
         """Test that Gemma-3n works with API endpoints."""
-        from onnx_chat.main import ChatRequest
+        from imageai_server.multimodal_chat.main import ChatRequest
         
         # Simulate API request
         request = ChatRequest(
