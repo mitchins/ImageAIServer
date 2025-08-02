@@ -1,41 +1,72 @@
-# ImageAIServer
+Metadata-Version: 2.4
+Name: imageaiserver
+Version: 1.0.0
+Summary: Privacy-focused AI inference server with ONNX models for vision, chat, and face analysis
+Author-email: Mitchell Currie <mitchell@example.com>
+License: MIT
+Project-URL: Homepage, https://github.com/mitchins/ImageAIServer
+Project-URL: Documentation, https://github.com/mitchins/ImageAIServer
+Project-URL: Repository, https://github.com/mitchins/ImageAIServer
+Project-URL: Issues, https://github.com/mitchins/ImageAIServer/issues
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: fastapi>=0.95.0
+Requires-Dist: uvicorn>=0.22.0
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: numpy>=1.23.0
+Requires-Dist: pillow>=9.0.0
+Requires-Dist: requests>=2.28.0
+Requires-Dist: python-multipart>=0.0.5
+Requires-Dist: onnxruntime>=1.15.0
+Requires-Dist: huggingface_hub>=0.17.0
+Requires-Dist: transformers>=4.30.0
+Requires-Dist: insightface>=0.7.0
+Requires-Dist: opencv-python>=4.5.0
+Requires-Dist: sentencepiece>=0.1.99
+Requires-Dist: optimum>=1.12.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.21.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0.0; extra == "dev"
+Requires-Dist: black>=23.0.0; extra == "dev"
+Requires-Dist: isort>=5.12.0; extra == "dev"
+Requires-Dist: flake8>=6.0.0; extra == "dev"
+Requires-Dist: mypy>=1.0.0; extra == "dev"
+Dynamic: license-file
 
-ImageAIServer provides privacy-focused, offline AI inference capabilities. These servers offer local alternatives to cloud-based AI services for vision, chat, and face analysis.
+# ComfyAI Server Stack
+
+The `apps/` directory contains optional HTTP services that power ComfyAI's local inference capabilities. These servers provide privacy-focused, offline alternatives to cloud-based AI services.
 
 ## 🚀 Quick Start
 
-### Installation
-
-#### PyPI Installation (Recommended)
+### Install Dependencies
 ```bash
-pip install imageaiserver
-```
-
-#### Docker Installation
-```bash
-docker build -t imageaiserver .
-docker run -p 8000:8000 imageaiserver
-```
-
-#### Development Installation
-```bash
-git clone https://github.com/mitchins/ImageAIServer.git
-cd ImageAIServer
-pip install -e .
+pip install -r onnx_chat/requirements.txt
+pip install -r face_api/requirements.txt
 ```
 
 ### Run Individual Services
 ```bash
 # ONNX Chat Server (vision-language models)
-python -m onnx_chat.main
+python -m apps.onnx_chat.main
 
 # Face Comparison API  
-PRESET=photo uvicorn face_api.main:app --port 7860
+PRESET=photo uvicorn apps.face_api.main:app --port 7860
 
 # Unified Server (all services + model management)
-uvicorn main:app --host 0.0.0.0 --port 8000
-# Or using the CLI command:
-imageaiserver
+uvicorn apps.main:app --host 0.0.0.0 --port 8000
 ```
 
 ---
@@ -61,8 +92,8 @@ imageaiserver
 python -m apps.onnx_chat.main
 
 # Custom configuration
-MODEL_NAME="Qwen2-VL-2B-Instruct/Q4" python -m onnx_chat.main
-ONNX_CHAT_HOST=0.0.0.0 ONNX_CHAT_PORT=8080 python -m onnx_chat.main
+MODEL_NAME="Qwen2-VL-2B-Instruct/Q4" python -m apps.onnx_chat.main
+ONNX_CHAT_HOST=0.0.0.0 ONNX_CHAT_PORT=8080 python -m apps.onnx_chat.main
 ```
 
 **📖 Detailed Documentation:** [onnx_chat/README.md](onnx_chat/README.md)
@@ -92,15 +123,15 @@ ONNX_CHAT_HOST=0.0.0.0 ONNX_CHAT_PORT=8080 python -m onnx_chat.main
 ### Usage
 ```bash
 # Photo preset (default)
-PRESET=photo uvicorn face_api.main:app
+PRESET=photo uvicorn apps.face_api.main:app
 
 # Anime preset  
-PRESET=anime uvicorn face_api.main:app --port 7860
+PRESET=anime uvicorn apps.face_api.main:app --port 7860
 
 # Custom configuration
 DETECTOR_MODEL=deepghs/anime_face_detection \
 EMBEDDER_MODEL_PATH=Xenova/clip-vit-base-patch32 \
-uvicorn face_api.main:app
+uvicorn apps.face_api.main:app
 ```
 
 **📖 Detailed Documentation:** [face_api/README.md](face_api/README.md)
@@ -109,7 +140,7 @@ uvicorn face_api.main:app
 
 ## 🔧 Unified Server & Model Management
 
-**All-in-one ImageAIServer** combining chat, face, and model management APIs.
+**All-in-one server** combining chat, face, and model management APIs.
 
 ### Features
 - **Unified endpoint** – single server for all ComfyAI services
@@ -128,9 +159,7 @@ uvicorn face_api.main:app
 ### Usage
 ```bash
 # Start unified server
-uvicorn main:app --host 0.0.0.0 --port 8000
-# Or using the CLI command:
-imageaiserver
+uvicorn apps.main:app --host 0.0.0.0 --port 8000
 
 # Access services:
 # - Chat API: http://localhost:8000/onnx-chat/
@@ -139,7 +168,7 @@ imageaiserver
 # - API Documentation: http://localhost:8000/docs
 ```
 
-**📖 Model Management Guide:** Available through the web interface at `/manage/ui/`
+**📖 Model Management Guide:** [../docs/UNIFIED_MODEL_MANAGEMENT.md](../docs/UNIFIED_MODEL_MANAGEMENT.md)
 
 ---
 
@@ -147,30 +176,32 @@ imageaiserver
 
 ### Service Structure
 ```
-ImageAIServer/
-├── main.py                # Unified server entry point
-├── onnx_chat/            # Vision-language model server
-│   ├── main.py           # Chat server entry point  
-│   └── README.md         # Detailed chat documentation
-├── face_api/             # Face comparison service
-│   ├── main.py           # Face server entry point
-│   ├── presets.py        # Model presets configuration
-│   └── README.md         # Detailed face documentation
-├── manage_api/           # Model management API
-│   └── router.py         # Management endpoints
-├── shared/               # Shared utilities
+apps/
+├── main.py                 # Unified server entry point
+├── onnx_chat/             # Vision-language model server
+│   ├── main.py            # Chat server entry point  
+│   ├── requirements.txt   # Chat dependencies
+│   └── README.md          # Detailed chat documentation
+├── face_api/              # Face comparison service
+│   ├── main.py            # Face server entry point
+│   ├── requirements.txt   # Face dependencies  
+│   ├── presets.py         # Model presets configuration
+│   └── README.md          # Detailed face documentation
+├── manage_api/            # Model management API
+│   └── router.py          # Management endpoints
+├── shared/                # Shared utilities
 │   ├── unified_model_registry.py  # Model discovery and tracking
-│   ├── model_types.py    # Model configurations
-│   └── manage_cache.py   # HuggingFace cache utilities
-└── static/               # Web interface assets
-    └── manage/           # Model management UI
+│   ├── model_types.py     # Model configurations
+│   └── manage_cache.py    # HuggingFace cache utilities
+└── static/                # Web interface assets
+    └── manage/            # Model management UI
 ```
 
 ### Communication Flow
 ```
-Client Applications → HTTP API → Local ONNX Server → Models
-         ↓                ↓            ↓
-    Web Interface → Management API → Model Registry
+ComfyUI Nodes → HTTP API → Local ONNX Server → Models
+     ↓              ↓            ↓
+Web Interface → Management API → Model Registry
 ```
 
 ---

@@ -6,13 +6,10 @@ from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.openapi.docs import get_swagger_ui_html
 import importlib
 import pkgutil
-from apps.shared.manage_cache import list_cached_entries
-from apps.shared.model_types import ModelType
-from common.logging import setup_logging
-
-setup_logging()
+from shared.manage_cache import list_cached_entries
+from shared.model_types import ModelType
 app = FastAPI(
-    title="ComfyAI Master API", 
+    title="ImageAIServer API", 
     version="1.0.0",
     openapi_version="3.0.2",
     docs_url=None  # Disable default docs to use custom
@@ -33,7 +30,7 @@ def register_routers():
             
             try:
                 # Import the router module
-                module_name = f"apps.{app_path.name}.router"
+                module_name = f"{app_path.name}.router"
                 module = importlib.import_module(module_name)
                 
                 if hasattr(module, 'router'):
@@ -178,8 +175,8 @@ async def root():
     <script src="/static/manage/navigation.js"></script>
     
     <div class="main-container">
-        <h1>🤖 Server Status Dashboard</h1>
-        <p class="subtitle">ComfyAI unified inference server monitoring and quick access</p>
+        <h1>🤖 ImageAIServer Dashboard</h1>
+        <p class="subtitle">Privacy-focused AI inference server monitoring and quick access</p>
         
         <!-- Server Status Section -->
         <div class="status">
@@ -234,7 +231,7 @@ async def custom_swagger_ui_html():
 <!DOCTYPE html>
 <html>
 <head>
-    <title>ComfyAI API Documentation</title>
+    <title>ImageAIServer API Documentation</title>
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui.css" />
     <style>
         body {{ margin: 0; padding: 0; }}
@@ -295,7 +292,7 @@ async def custom_swagger_ui_html():
     <nav class="comfyai-nav">
         <div class="nav-container">
             <div class="nav-brand">
-                <a href="/" class="brand-link">🤖 ComfyAI</a>
+                <a href="/" class="brand-link">🤖 ImageAIServer</a>
             </div>
             <div class="nav-links">
                 <a href="/" class="nav-link" title="Home">🏠 Home</a>
@@ -373,3 +370,13 @@ async def list_models():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def main():
+    """Entry point for the ImageAIServer CLI command."""
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+if __name__ == "__main__":
+    main()
