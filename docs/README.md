@@ -1,4 +1,4 @@
-# ImageAIServer Documentation
+# ImageAIServer Documentation <img src="../imageai_server/static/icon.png" alt="ImageAIServer Icon" width="30" height="30">
 
 This directory contains all technical documentation for ImageAIServer.
 

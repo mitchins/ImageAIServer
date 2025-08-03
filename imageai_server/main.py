@@ -178,7 +178,7 @@ async def root():
     <script src="/static/manage/navigation.js"></script>
     
     <div class="main-container">
-        <h1>🤖 ImageAIServer Dashboard</h1>
+        <h1><img src="/static/icon.png" alt="ImageAIServer Icon" style="height: 1em; vertical-align: middle;"> ImageAIServer</h1>
         <p class="subtitle">Privacy-focused AI inference server monitoring and quick access</p>
         
         <!-- Server Status Section -->
@@ -389,6 +389,13 @@ app.mount(
     "/static/manage",
     StaticFiles(directory=STATIC_DIR),
     name="static_manage",
+)
+
+# Mount static files from the 'static' directory for root access (e.g., /static/icon.png)
+app.mount(
+    "/static",
+    StaticFiles(directory=Path(__file__).resolve().parent / "static"),
+    name="static",
 )
 
 

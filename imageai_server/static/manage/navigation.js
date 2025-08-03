@@ -14,7 +14,7 @@
             <nav class="imageai-nav">
                 <div class="nav-container">
                     <div class="nav-brand">
-                        <a href="/" class="brand-link">🤖 ImageAI</a>
+                        <a href="/" class="brand-link"><img src="/static/icon.png" alt="ImageAI" class="nav-icon"> ImageAI</a>
                     </div>
                     <div class="nav-links">
                         <a href="/" class="nav-link" title="Home">🏠 Home</a>
@@ -61,6 +61,12 @@
                 }
                 .nav-brand .brand-link:hover {
                     color: rgba(255,255,255,0.9);
+                }
+                .nav-icon {
+                    height: 30px; /* Adjust size as needed */
+                    width: 30px; /* Adjust size as needed */
+                    margin-right: 8px;
+                    vertical-align: middle;
                 }
                 .nav-links {
                     display: flex;
