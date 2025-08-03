@@ -63,8 +63,40 @@ class TestSmolVLMInt8Integration:
     
     @staticmethod
     def create_pizza_image():
-        """Create a simple pizza-like image."""
-        # Create a circular pizza base
+        """Download and prepare a real pizza image from Wikipedia."""
+        import urllib.request
+        import urllib.error
+        
+        # Real pizza image from Wikipedia Commons
+        pizza_url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ_b18AhX_x9OGzOALgqMRzkatTATIQB3fIww&s"
+        
+        try:
+            # Download the image
+            with urllib.request.urlopen(pizza_url) as response:
+                img_data = response.read()
+            
+            # Load and process the image
+            img = Image.open(io.BytesIO(img_data)).convert('RGB')
+            
+            # Resize to reasonable size for testing (keep aspect ratio)
+            img.thumbnail((512, 512), Image.Resampling.LANCZOS)
+            
+            # Convert to base64
+            buffer = io.BytesIO()
+            img.save(buffer, format='PNG')
+            img_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+            
+            return img_base64, img
+            
+        except (urllib.error.URLError, urllib.error.HTTPError, Exception) as e:
+            # Fallback to simple programmatic pizza if download fails
+            print(f"Warning: Could not download real pizza image ({e}), using fallback")
+            return TestSmolVLMInt8Integration._create_fallback_pizza_image()
+    
+    @classmethod
+    def _create_fallback_pizza_image(cls):
+        """Create a simple fallback pizza image if download fails."""
+        # Simplified version of the original pizza creation
         img = Image.new('RGB', (256, 256), color='white')
         pixels = np.array(img)
         
@@ -78,24 +110,18 @@ class TestSmolVLMInt8Integration:
                 if distance <= radius:
                     pixels[y, x] = [210, 180, 140]  # Tan pizza base
                     
-                    # Add pepperoni (red circles)
+                    # Add simple pepperoni dots
                     if distance <= radius - 10:
                         pepperoni_positions = [
                             (center_x - 30, center_y - 20),
                             (center_x + 25, center_y - 30),
                             (center_x - 20, center_y + 25),
-                            (center_x + 35, center_y + 15),
-                            (center_x - 5, center_y - 40),
                         ]
                         
                         for px, py in pepperoni_positions:
                             pepperoni_dist = ((x - px) ** 2 + (y - py) ** 2) ** 0.5
                             if pepperoni_dist <= 8:
                                 pixels[y, x] = [180, 50, 50]  # Red pepperoni
-                    
-                    # Add cheese texture (slight yellow tint)
-                    if distance <= radius - 5 and (x + y) % 3 == 0:
-                        pixels[y, x] = [220, 200, 120]  # Cheese color
         
         img = Image.fromarray(pixels.astype('uint8'))
         

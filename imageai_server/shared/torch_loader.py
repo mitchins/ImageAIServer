@@ -49,15 +49,28 @@ class PyTorchBackend(ModelBackend):
         return TORCH_AVAILABLE
     
     def get_supported_models(self) -> List[str]:
-        """Return list of models supported by PyTorch backend (minimal set)."""
+        """Return list of models supported by PyTorch backend (curated selection)."""
         return [
-            # Ultra-lightweight vision-language models only
+            # Ultra-lightweight vision-language models (original PyTorch)
             "HuggingFaceTB/SmolVLM-256M-Instruct",  # 256M params - minimal VLM
             "HuggingFaceTB/SmolVLM-500M-Instruct",  # 500M params - still tiny
             
-            # Note: For quantized versions, use GGUF instead:
-            # - ggml-org/SmolVLM-256M-Instruct-GGUF (Q8_0: 175MB, F16: 328MB)
-            # - lmstudio-community/granite-vision-3.2-2b-GGUF
+            # GGUF quantized models (preferred for efficiency)
+            "ggml-org/SmolVLM-256M-Instruct-GGUF",    # Q8_0: 175MB, F16: 328MB
+            "ggml-org/SmolVLM-500M-Instruct-GGUF",    # Q8_0: ~400MB, F16: ~750MB
+            "bartowski/ibm-granite_granite-vision-3.2-2b-GGUF",  # Q6_K: 2.08GB, Q4_K_M: 1.55GB
+            
+            # IBM Granite Vision models (original PyTorch)
+            "ibm-granite/granite-vision-3.2-2b",  # 2B params - document understanding
+            
+            # Qwen2.5-VL AWQ quantized (7B efficient)
+            "Qwen/Qwen2.5-VL-7B-Instruct-AWQ",  # 7B params - AWQ quantized for efficiency
+            
+            # Pixtral 12B (high quality, GGUF quantized)
+            "bartowski/mistral-community_pixtral-12b-GGUF",  # 12B params - high quality vision
+            
+            # Gemma-3 27B (large model, GGUF quantized)
+            "bartowski/google_gemma-3-27b-it-GGUF",  # 27B params - powerful text+vision
         ]
     
     def supports_quantization(self, quant_type: str) -> bool:
@@ -85,12 +98,23 @@ class PyTorchModelLoader(ModelLoader):
         self.tokenizers_cache: Dict[str, Any] = {}
     
     def parse_model_name(self, name: str) -> Tuple[str, str]:
-        """Parse model name into repo_id and revision."""
-        if "@" in name:
-            repo_id, revision = name.split("@", 1)
+        """Parse model name into repo_id and revision, stripping quantization suffixes."""
+        # Strip quantization suffixes that are meant for ONNX models
+        # e.g., "SmolVLM-256M-Instruct/UINT8" -> "SmolVLM-256M-Instruct"
+        quantization_suffixes = ["/FP32", "/FP16", "/INT8", "/UINT8", "/Q4", "/Q4_F16", "/BNB4", "/QUANTIZED"]
+        base_name = name
+        for suffix in quantization_suffixes:
+            if base_name.endswith(suffix):
+                base_name = base_name[:-len(suffix)]
+                logger.info(f"Stripped quantization suffix from {name} -> {base_name}")
+                break
+        
+        if "@" in base_name:
+            repo_id, revision = base_name.split("@", 1)
         else:
-            repo_id = name
+            repo_id = base_name
             revision = "main"
+        
         return repo_id, revision
     
     def download_model_files(self, repo_id: str, **kwargs) -> Dict[str, str]:
@@ -144,11 +168,12 @@ class PyTorchModelLoader(ModelLoader):
                 hasattr(config, 'model_type') and 'vision' in config.model_type.lower()
             ) or (
                 hasattr(config, 'architectures') and 
-                any('vision' in arch.lower() or 'vlm' in arch.lower() for arch in config.architectures)
+                any('vision' in arch.lower() or 'vlm' in arch.lower() or 'llava' in arch.lower() for arch in config.architectures)
             ) or repo_id in [
                 "HuggingFaceTB/SmolVLM-256M-Instruct",
-                "llava-hf/llava-1.5-7b-hf",
+                "llava-hf/llava-1.5-7b-hf", 
                 "llava-hf/llava-1.5-13b-hf",
+                "ibm-granite/granite-vision-3.2-2b",
             ]
             
             # Load tokenizer/processor
@@ -176,6 +201,12 @@ class PyTorchModelLoader(ModelLoader):
                         from transformers import Idefics3ForConditionalGeneration
                         model = Idefics3ForConditionalGeneration.from_pretrained(repo_id, **model_kwargs)
                         logger.info(f"Loaded as Idefics3 model: {repo_id}")
+                    # Check for LlavaNext models (like Granite Vision)
+                    elif (hasattr(config, 'model_type') and config.model_type == 'llava_next') or \
+                         (hasattr(config, 'architectures') and any('LlavaNext' in arch for arch in config.architectures)):
+                        from transformers import LlavaNextForConditionalGeneration
+                        model = LlavaNextForConditionalGeneration.from_pretrained(repo_id, **model_kwargs)
+                        logger.info(f"Loaded as LlavaNext model: {repo_id}")
                     else:
                         model = AutoModelForVision2Seq.from_pretrained(repo_id, **model_kwargs)
                         logger.info(f"Loaded as Vision2Seq model: {repo_id}")
@@ -280,9 +311,21 @@ class PyTorchInferenceEngine(InferenceEngine):
                 "temperature": temperature,
                 "top_p": top_p,
                 "do_sample": temperature > 0,
-                "pad_token_id": self.tokenizer.pad_token_id,
-                "eos_token_id": self.tokenizer.eos_token_id,
             }
+            
+            # Handle pad_token_id for different tokenizer types
+            if hasattr(self.tokenizer, 'pad_token_id') and self.tokenizer.pad_token_id is not None:
+                generation_kwargs["pad_token_id"] = self.tokenizer.pad_token_id
+            elif hasattr(self.tokenizer, 'tokenizer') and hasattr(self.tokenizer.tokenizer, 'pad_token_id'):
+                # For processors with nested tokenizer
+                generation_kwargs["pad_token_id"] = self.tokenizer.tokenizer.pad_token_id
+            
+            # Handle eos_token_id for different tokenizer types
+            if hasattr(self.tokenizer, 'eos_token_id') and self.tokenizer.eos_token_id is not None:
+                generation_kwargs["eos_token_id"] = self.tokenizer.eos_token_id
+            elif hasattr(self.tokenizer, 'tokenizer') and hasattr(self.tokenizer.tokenizer, 'eos_token_id'):
+                # For processors with nested tokenizer
+                generation_kwargs["eos_token_id"] = self.tokenizer.tokenizer.eos_token_id
             generation_kwargs.update(kwargs)
             
             outputs = self.model.generate(
@@ -317,7 +360,10 @@ class PyTorchInferenceEngine(InferenceEngine):
             return True
         elif modality == "vision":
             # Check if model has vision components
-            return hasattr(self.model, "vision_tower") or hasattr(self.model, "vision_model")
+            return (hasattr(self.model, "vision_tower") or 
+                   hasattr(self.model, "vision_model") or
+                   hasattr(self.model, "multi_modal_projector") or  # LlavaNext models
+                   "vision" in str(type(self.model)).lower())
         elif modality == "audio":
             # Check if model has audio components
             return hasattr(self.model, "audio_encoder") or hasattr(self.model, "audio_model")

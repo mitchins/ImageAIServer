@@ -6,6 +6,7 @@ from pathlib import Path
 import os
 
 from .model_types import REFERENCE_MODELS, MODEL_QUANT_CONFIGS
+from .model_identifier import ModelCatalog, QuantizationType
 
 
 @dataclass
@@ -41,6 +42,7 @@ class UnifiedModelRegistry:
     def _discover_models(self):
         """Discover all models from chat and face servers."""
         self._discover_chat_models()
+        self._discover_gguf_models()
         self._discover_face_models()
     
     def _discover_chat_models(self):
@@ -100,6 +102,53 @@ class UnifiedModelRegistry:
                         # Avoid duplicates
                         if not any(f.path == companion_path and f.repo_id == repo_id for f in model.files):
                             model.files.append(companion_file)
+    
+    def _discover_gguf_models(self):
+        """Discover GGUF models from ModelCatalog."""
+        for model_id, model_info in ModelCatalog.MODELS.items():
+            repo_id = model_info.repo_id
+            
+            # Only include GGUF models (those with quantizations in GGUF_QUANTIZATIONS)
+            if repo_id not in ModelCatalog.GGUF_QUANTIZATIONS:
+                continue
+            
+            unified_model_id = f"gguf-{model_id}"
+            
+            if unified_model_id not in self.models:
+                # Create base model entry
+                display_name = f"{model_info.family.title()} {model_info.size.upper()}"
+                if model_info.variant and model_info.variant != "instruct":
+                    display_name += f" {model_info.variant.title()}"
+                
+                self.models[unified_model_id] = UnifiedModel(
+                    id=unified_model_id,
+                    name=display_name,
+                    server="chat",
+                    architecture="gguf-quantized",
+                    description=f"{display_name} (GGUF quantized for efficiency)",
+                    quantizations=[],
+                    files=[]
+                )
+            
+            # Add quantizations and files
+            model = self.models[unified_model_id]
+            available_quants = ModelCatalog.get_available_quantizations(repo_id)
+            
+            for quant in available_quants:
+                quant_name = quant.value.upper()
+                if quant_name not in model.quantizations:
+                    model.quantizations.append(quant_name)
+                
+                # Add GGUF file for this quantization
+                gguf_filename = ModelCatalog.format_gguf_filename(repo_id, quant)
+                model_file = ModelFile(
+                    path=gguf_filename,
+                    repo_id=repo_id
+                )
+                
+                # Avoid duplicates
+                if not any(f.path == gguf_filename and f.repo_id == repo_id for f in model.files):
+                    model.files.append(model_file)
     
     def _discover_face_models(self):
         """Discover face detection and embedding models."""
@@ -180,7 +229,6 @@ class UnifiedModelRegistry:
         """Get repository ID for a chat model name."""
         model_repo_mapping = {
             "Gemma-3n-E2B-it-ONNX": "onnx-community/gemma-3n-E2B-it-ONNX",
-            "SmolVLM-256M-Instruct": "HuggingFaceTB/SmolVLM-256M-Instruct",
         }
         return model_repo_mapping.get(model_name)
     

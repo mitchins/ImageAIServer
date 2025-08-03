@@ -201,3 +201,6 @@ htmlcov/
 # Ruff cache
 .ruff_cache/
 build/
+onnx/embed_tokens_quantized.onnx_data
+onnx/embed_tokens_quantized.onnx_data_1
+onnx/vision_encoder.onnx_data

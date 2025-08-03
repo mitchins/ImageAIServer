@@ -92,6 +92,18 @@ async def health_check():
 # Helper to validate model name against curated list
 def validate_model_name(model_name: str) -> str:
     """Validate that the model is in our curated list and return the repo_id."""
+    # First, try using the unified model system
+    from ..shared.model_identifier import ModelCatalog, ModelNameParser
+    
+    # Handle unified model identifiers (e.g., "smolvlm-256m-instruct:q8_0")
+    try:
+        model_id, quantization, backend = ModelNameParser.normalize_model_name(model_name)
+        if model_id and model_id in ModelCatalog.MODELS:
+            model_info = ModelCatalog.MODELS[model_id]
+            return model_info.repo_id
+    except Exception:
+        pass
+    
     # Handle direct reference model names
     try:
         ref_model = ReferenceModel(model_name)
@@ -105,16 +117,34 @@ def validate_model_name(model_name: str) -> str:
         if model_name == spec.repo_id or model_name.startswith(spec.repo_id):
             return spec.repo_id
     
-    # Handle curated model names directly
-    curated_model_names = ["Gemma-3n-E2B-it-ONNX", "SmolVLM-256M-Instruct"]
+    # Handle curated model names directly (ONNX-only models)
+    curated_model_names = ["Gemma-3n-E2B-it-ONNX"]
     for curated_name in curated_model_names:
         if model_name == curated_name or model_name.startswith(curated_name):
             # Map curated name back to repo_id
             mapping = {
                 "Gemma-3n-E2B-it-ONNX": "onnx-community/gemma-3n-E2B-it-ONNX",
-                "SmolVLM-256M-Instruct": "HuggingFaceTB/SmolVLM-256M-Instruct",
             }
             return mapping[curated_name]
+    
+    # Handle PyTorch-only models (let model manager handle backend selection)
+    pytorch_models = [
+        "HuggingFaceTB/SmolVLM-256M-Instruct",
+        "HuggingFaceTB/SmolVLM-500M-Instruct", 
+        "ibm-granite/granite-vision-3.2-2b"
+    ]
+    
+    # Strip quantization suffixes for PyTorch model name checking
+    base_model_name = model_name
+    quantization_suffixes = ["/FP32", "/FP16", "/INT8", "/UINT8", "/Q4", "/Q4_F16", "/BNB4", "/QUANTIZED"]
+    for suffix in quantization_suffixes:
+        if base_model_name.endswith(suffix):
+            base_model_name = base_model_name[:-len(suffix)]
+            break
+    
+    for pytorch_model in pytorch_models:
+        if base_model_name == pytorch_model or base_model_name.endswith(pytorch_model.split('/')[-1]):
+            return pytorch_model
     
     # Model not in curated list
     available_models = [f"{model.value} ({spec.repo_id})" for model, spec in REFERENCE_MODELS.items()]
@@ -126,8 +156,20 @@ def validate_model_name(model_name: str) -> str:
 
 # Helper to get inference engine
 async def get_inference_engine(model_name: str):
-    """Get inference engine for a model, preferring ONNX backend."""
-    # Validate model first
+    """Get inference engine for a model, using appropriate backend."""
+    # For unified model identifiers, let the model manager handle everything
+    from ..shared.model_identifier import ModelNameParser
+    
+    try:
+        # Try to parse as unified model identifier first
+        model_id, quantization, backend = ModelNameParser.normalize_model_name(model_name)
+        if model_id:
+            # Use the original model name to preserve quantization info
+            return model_manager.load_model(model_name, backend=None)  # Let model manager choose
+    except Exception:
+        pass
+    
+    # Validate model first for legacy models
     validated_repo_id = validate_model_name(model_name)
     
     # Map repo_id back to model name for curated configs
@@ -151,21 +193,21 @@ async def get_inference_engine(model_name: str):
         # Fall back to legacy approach
         model_quant_key = f"{validated_repo_id}:q4"
     
-    # Use model manager to load the model with ONNX backend preference
-    return model_manager.load_model(model_quant_key, backend=BackendType.ONNX)
+    # Use model manager to load the model - let it choose the appropriate backend
+    return model_manager.load_model(model_quant_key, backend=None)
 
 
 # Generate text using inference engine
 async def generate_text(text: str, model_name: str, max_tokens: int = 100, images: List[str] | None = None, audio: List[str] | None = None) -> str:
     """Generate text using the model manager."""
-    # Use the model manager directly for generation
+    # Use the model manager directly for generation - let it choose the appropriate backend
     return model_manager.generate_text(
         model_name=model_name,
         text=text,
         max_tokens=max_tokens,
         images=images,
         audio=audio,
-        backend=BackendType.ONNX  # Prefer ONNX for this server
+        backend=None  # Let model manager choose appropriate backend
     )
 
 

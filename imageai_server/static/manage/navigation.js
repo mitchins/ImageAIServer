@@ -1,4 +1,4 @@
-// Shared navigation component for ComfyAI UI pages
+// Shared navigation component for ImageAI UI pages
 // Automatically injects a consistent navigation bar at the top of pages
 
 (function() {
@@ -11,10 +11,10 @@
     
     function initNavigation() {
         const navHTML = `
-            <nav class="comfyai-nav">
+            <nav class="imageai-nav">
                 <div class="nav-container">
                     <div class="nav-brand">
-                        <a href="/" class="brand-link">🤖 ComfyAI</a>
+                        <a href="/" class="brand-link">🤖 ImageAI</a>
                     </div>
                     <div class="nav-links">
                         <a href="/" class="nav-link" title="Home">🏠 Home</a>
@@ -33,7 +33,7 @@
                     margin: 0;
                     padding: 0;
                 }
-                .comfyai-nav {
+                .imageai-nav {
                     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                     position: sticky;
@@ -110,7 +110,7 @@
                 }
                 
                 /* Integration with existing Materialize CSS pages */
-                .comfyai-nav + .container {
+                .imageai-nav + .container {
                     margin-top: 2rem;
                 }
                 
@@ -127,12 +127,12 @@
                 }
                 
                 /* Integration with all page types */
-                .comfyai-nav + .container,
-                .comfyai-nav + .main-container {
+                .imageai-nav + .container,
+                .imageai-nav + .main-container {
                     margin-top: 0;
                 }
-                .comfyai-nav + .container .header,
-                .comfyai-nav + .main-container .page-header {
+                .imageai-nav + .container .header,
+                .imageai-nav + .main-container .page-header {
                     border-radius: 0;
                     margin-top: 0;
                 }
@@ -140,7 +140,7 @@
         `;
         
         // Insert navigation at the beginning of body (only if not already present)
-        if (!document.querySelector('.comfyai-nav')) {
+        if (!document.querySelector('.imageai-nav')) {
             document.head.insertAdjacentHTML('beforeend', navStyles);
             document.body.insertAdjacentHTML('afterbegin', navHTML);
             document.body.classList.add('has-nav');

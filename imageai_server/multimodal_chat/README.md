@@ -204,4 +204,4 @@ When adding new models:
 
 ## 📝 License
 
-Part of the ComfyAI project. See main repository for license details.
+Part of the ImageAIServer project. See main repository for license details.

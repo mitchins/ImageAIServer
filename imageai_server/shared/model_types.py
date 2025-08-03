@@ -30,9 +30,6 @@ class ReferenceModel(str, Enum):
     # Gemma-3n models - Vision + Text + Audio (SOTA)
     GEMMA_3N_E2B = "gemma-3n-e2b"
     
-    # SmolVLM models - Ultra-lightweight vision + text (Future)
-    SMOLVLM_256M = "smolvlm-256m"
-    
     # Granite models - Vision + Text (NOT just text-only granite)
     GRANITE_VISION_3_2B = "granite-vision-3-2b"
 
@@ -83,51 +80,9 @@ class ModelSpec:
     description: str
 
 
-# Optimal "Model/Quant" → component mappings (only quants fully supported by all submodels)
+# Optimal "Model/Quant" → component mappings
 MODEL_QUANT_CONFIGS = {
-    # Qwen2-VL-2B-Instruct supports all eight quant types across decoder, embed & vision
-    "Qwen2-VL-2B-Instruct/FP32": {
-        "decoder":         "onnx/decoder_model_merged.onnx",
-        "embed_tokens":    "onnx/embed_tokens.onnx",
-        "vision_encoder":  "onnx/vision_encoder.onnx",
-    },
-    "Qwen2-VL-2B-Instruct/FP16": {
-        "decoder":         "onnx/decoder_model_merged_fp16.onnx",
-        "embed_tokens":    "onnx/embed_tokens_fp16.onnx",
-        "vision_encoder":  "onnx/vision_encoder_fp16.onnx",
-    },
-    "Qwen2-VL-2B-Instruct/INT8": {
-        "decoder":         "onnx/decoder_model_merged_int8.onnx",
-        "embed_tokens":    "onnx/embed_tokens_int8.onnx",
-        "vision_encoder":  "onnx/vision_encoder_int8.onnx",
-    },
-    "Qwen2-VL-2B-Instruct/Q4": {
-        "decoder":         "onnx/decoder_model_merged_q4.onnx",
-        "embed_tokens":    "onnx/embed_tokens_q4.onnx",
-        "vision_encoder":  "onnx/vision_encoder_q4.onnx",
-    },
-    "Qwen2-VL-2B-Instruct/Q4_F16": {
-        "decoder":         "onnx/decoder_model_merged_q4f16.onnx",
-        "embed_tokens":    "onnx/embed_tokens_q4f16.onnx",
-        "vision_encoder":  "onnx/vision_encoder_q4f16.onnx",
-    },
-    "Qwen2-VL-2B-Instruct/BNB4": {
-        "decoder":         "onnx/decoder_model_merged_bnb4.onnx",
-        "embed_tokens":    "onnx/embed_tokens_bnb4.onnx",
-        "vision_encoder":  "onnx/vision_encoder_bnb4.onnx",
-    },
-    "Qwen2-VL-2B-Instruct/QUANTIZED": {
-        "decoder":         "onnx/decoder_model_merged_quantized.onnx",
-        "embed_tokens":    "onnx/embed_tokens_quantized.onnx",
-        "vision_encoder":  "onnx/vision_encoder_quantized.onnx",
-    },
-    "Qwen2-VL-2B-Instruct/UINT8": {
-        "decoder":         "onnx/decoder_model_merged_uint8.onnx",
-        "embed_tokens":    "onnx/embed_tokens_uint8.onnx",
-        "vision_encoder":  "onnx/vision_encoder_uint8.onnx",
-    },
-
-    # Gemma-3n-E2B-it-ONNX configurations (matching test_gemma3n.py)
+    # Gemma-3n-E2B-it-ONNX configurations (high quality multimodal with audio support)
     "Gemma-3n-E2B-it-ONNX/Q4_MIXED": {
         "audio_encoder":   "onnx/audio_encoder_q4.onnx",
         "decoder":         "onnx/decoder_model_merged_q4.onnx",
@@ -145,60 +100,6 @@ MODEL_QUANT_CONFIGS = {
         "decoder":         "onnx/decoder_model_merged.onnx",
         "embed_tokens":    "onnx/embed_tokens.onnx",
         "vision_encoder":  "onnx/vision_encoder.onnx",
-    },
-
-    # Phi-3.5-vision-instruct only Q4 & Q4_F16
-    "Phi-3.5-vision-instruct/Q4": {
-        "prepare_inputs_embeds": "onnx/prepare_inputs_embeds_q4.onnx",
-        "decoder":               "onnx/model_q4.onnx",
-        "vision_encoder":        "onnx/vision_encoder_q4.onnx",
-    },
-    "Phi-3.5-vision-instruct/Q4_F16": {
-        "prepare_inputs_embeds": "onnx/prepare_inputs_embeds_q4f16.onnx",
-        "decoder":               "onnx/model_q4f16.onnx",
-        "vision_encoder":        "onnx/vision_encoder_q4f16.onnx",
-    },
-    
-    # SmolVLM-256M-Instruct - Ultra-lightweight with all quantization options
-    "SmolVLM-256M-Instruct/FP32": {
-        "embed_tokens":    "onnx/embed_tokens.onnx",
-        "decoder":         "onnx/decoder_model_merged.onnx",
-        "vision_encoder":  "onnx/vision_encoder.onnx",
-    },
-    "SmolVLM-256M-Instruct/FP16": {
-        "embed_tokens":    "onnx/embed_tokens_fp16.onnx",
-        "decoder":         "onnx/decoder_model_merged_fp16.onnx",
-        "vision_encoder":  "onnx/vision_encoder_fp16.onnx",
-    },
-    "SmolVLM-256M-Instruct/INT8": {
-        "embed_tokens":    "onnx/embed_tokens_int8.onnx",
-        "decoder":         "onnx/decoder_model_merged_int8.onnx",
-        "vision_encoder":  "onnx/vision_encoder_int8.onnx",
-    },
-    "SmolVLM-256M-Instruct/UINT8": {
-        "embed_tokens":    "onnx/embed_tokens_uint8.onnx",
-        "decoder":         "onnx/decoder_model_merged_uint8.onnx",
-        "vision_encoder":  "onnx/vision_encoder_uint8.onnx",
-    },
-    "SmolVLM-256M-Instruct/Q4": {
-        "embed_tokens":    "onnx/embed_tokens_q4.onnx",
-        "decoder":         "onnx/decoder_model_merged_q4.onnx",
-        "vision_encoder":  "onnx/vision_encoder_q4.onnx",
-    },
-    "SmolVLM-256M-Instruct/Q4_F16": {
-        "embed_tokens":    "onnx/embed_tokens_q4f16.onnx",
-        "decoder":         "onnx/decoder_model_merged_q4f16.onnx",
-        "vision_encoder":  "onnx/vision_encoder_q4f16.onnx",
-    },
-    "SmolVLM-256M-Instruct/BNB4": {
-        "embed_tokens":    "onnx/embed_tokens_bnb4.onnx",
-        "decoder":         "onnx/decoder_model_merged_bnb4.onnx",
-        "vision_encoder":  "onnx/vision_encoder_bnb4.onnx",
-    },
-    "SmolVLM-256M-Instruct/QUANTIZED": {
-        "embed_tokens":    "onnx/embed_tokens_quantized.onnx",
-        "decoder":         "onnx/decoder_model_merged_quantized.onnx",
-        "vision_encoder":  "onnx/vision_encoder_quantized.onnx",
     },
 }
 
@@ -265,31 +166,6 @@ REFERENCE_MODELS = {
         supported_quants=[Quantization.Q4, Quantization.QUANTIZED, Quantization.FP16, Quantization.FULL],
         default_quant=Quantization.Q4,
         description="2B multimodal model with vision, text, and audio"
-    ),
-    
-    ReferenceModel.SMOLVLM_256M: ModelSpec(
-        repo_id="HuggingFaceTB/SmolVLM-256M-Instruct",
-        config=ONNXModelConfig(
-            num_layers=30,
-            num_heads=9,
-            head_dim=64,  # 576 / 9 = 64
-            num_kv_heads=3,
-            has_vision=True,
-            position_dims=1,
-            subfolder="onnx",
-            components={
-                'embed': 'embed_tokens{suffix}.onnx',
-                'decoder': 'decoder_model_merged{suffix}.onnx',
-                'vision_encoder': 'vision_encoder{suffix}.onnx',
-            }
-        ),
-        supported_quants=[
-            Quantization.UINT8, Quantization.INT8, Quantization.Q4, 
-            Quantization.Q4_F16, Quantization.BNB4, Quantization.FP16, 
-            Quantization.QUANTIZED, Quantization.FULL
-        ],
-        default_quant=Quantization.UINT8,  # Smallest available
-        description="256M ultra-lightweight vision+text model, excellent for CPU/edge inference"
     )
 }
 

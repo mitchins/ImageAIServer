@@ -145,7 +145,7 @@ uvicorn face_api.main:app
 **All-in-one ImageAIServer** combining chat, face, and model management APIs.
 
 ### Features
-- **Unified endpoint** – single server for all ComfyAI services
+- **Unified endpoint** – single server for all ImageAI services
 - **Model management UI** – web-based interface at `/manage/ui/`
 - **Curated model catalog** – pre-configured ONNX models
 - **Quantization control** – download specific model variants

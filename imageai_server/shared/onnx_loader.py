@@ -311,16 +311,16 @@ class ONNXModelLoader(ModelLoader):
     def _get_repo_id_from_model_name(self, model_name: str) -> Optional[str]:
         """Map model name to repo_id using curated model mappings."""
         model_repo_mapping = {
-            "Gemma-3n-E2B-it-ONNX": "onnx-community/gemma-3n-E2B-it-ONNX", 
-            "SmolVLM-256M-Instruct": "HuggingFaceTB/SmolVLM-256M-Instruct",
+            "Gemma-3n-E2B-it-ONNX": "onnx-community/gemma-3n-E2B-it-ONNX",
         }
         return model_repo_mapping.get(model_name)
     
     def download_curated_components(self, repo_id: str, component_config: Dict[str, str]) -> Dict[str, str]:
-        """Download components using curated file paths."""
+        """Download components using curated file paths - NO FALLBACK."""
         component_paths = {}
         
         for component_name, filename in component_config.items():
+            logger.info(f"Downloading EXACT file for {component_name}: {filename}")
             try:
                 path = hf_hub_download(repo_id=repo_id, filename=filename)
                 
@@ -346,17 +346,19 @@ class ONNXModelLoader(ModelLoader):
                             pass
                 
                 component_paths[component_name] = path
-                logger.info(f"Downloaded {component_name}: {filename}")
+                logger.info(f"Successfully downloaded {component_name}: {filename}")
             except Exception as e:
-                logger.error(f"Failed to download {component_name} ({filename}): {e}")
-                raise ValueError(f"Required component {component_name} not found in repository {repo_id}")
+                logger.error(f"EXACT FILE NOT FOUND - Failed to download {component_name} ({filename}): {e}")
+                raise ValueError(f"Required component {component_name} with exact filename '{filename}' not found in repository {repo_id}. No fallback attempted.")
         
         return component_paths
 
     def load_model(self, model_name: str) -> tuple[Dict[str, Any], AutoTokenizer, ONNXModelConfig]:
         """Load ONNX model components, tokenizer, and config."""
         # Check if this is a curated model/quant combo first
+        logger.info(f"Loading ONNX model: {model_name}")
         if '/' in model_name and get_curated_model_config(model_name) is not None:
+            logger.info(f"Using CURATED loading path for {model_name}")
             return self.load_curated_model(model_name)
         
         # Fall back to legacy loading for backwards compatibility
@@ -396,8 +398,25 @@ class ONNXModelLoader(ModelLoader):
         for component_name, path in component_paths.items():
             # Use CPU-only for tests to avoid CoreML dynamic shape issues
             providers = ['CPUExecutionProvider']
-            sessions[component_name] = ort.InferenceSession(path, providers=providers)
-            logger.info(f"Loaded {component_name} from {path}")
+            
+            # Create session options (needed for quantized models to work properly)
+            sess_options = ort.SessionOptions()
+            
+            logger.info(f"Creating ONNX session for {component_name} at {path}")
+            logger.info(f"Available providers: {ort.get_available_providers()}")
+            logger.info(f"Using providers: {providers}")
+            
+            try:
+                sessions[component_name] = ort.InferenceSession(
+                    path, 
+                    sess_options=sess_options,
+                    providers=providers
+                )
+                actual_providers = sessions[component_name].get_providers()
+                logger.info(f"Successfully loaded {component_name} with providers: {actual_providers}")
+            except Exception as e:
+                logger.error(f"Failed to load {component_name} from {path}: {e}")
+                raise
         
         # Cache everything
         self.sessions_cache[model_name] = sessions

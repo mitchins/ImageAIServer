@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ComfyAI Vision & Face Test UI</title>
+    <title>ImageAI Vision & Face Test UI</title>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
@@ -227,8 +227,7 @@
             <div class="form-group">
                 <label for="model-select">Model</label>
                 <select id="model-select" class="form-control">
-                    <option value="Gemma-3n-E2B-it-ONNX/Q4_MIXED" selected>Gemma-3n-E2B-it-ONNX/Q4_MIXED (SOTA - Vision + Audio + Text)</option>
-                    <option value="SmolVLM-256M-Instruct/UINT8">SmolVLM-256M-Instruct/UINT8 (Ultra-lightweight - Experimental)</option>
+                    <option value="">Loading models...</option>
                 </select>
             </div>
             
@@ -363,6 +362,9 @@
             submitBtn.disabled = true;
             spinner.style.display = 'inline-block';
             
+            // Start timing
+            const startTime = performance.now();
+            
             try {
                 const messages = [{ role: 'user', content: prompt }];
                 const payload = { model, messages, max_tokens: maxTokens };
@@ -381,13 +383,18 @@
                 
                 const data = await response.json();
                 
+                // End timing
+                const endTime = performance.now();
+                const generationTime = (endTime - startTime) / 1000; // Convert to seconds
+                
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${data.detail || 'Unknown error'}`);
                 }
                 
                 showResult('vision-result', {
                     model: data.model,
-                    response: data.choices[0].message.content
+                    response: data.choices[0].message.content,
+                    generationTime: generationTime
                 });
                 
             } catch (error) {
@@ -441,9 +448,16 @@
         function showResult(elementId, data) {
             const resultDiv = document.getElementById(elementId);
             resultDiv.className = 'result';
+            
+            let timeInfo = '';
+            if (data.generationTime !== undefined) {
+                timeInfo = `<p><strong>Generation Time:</strong> ${data.generationTime.toFixed(2)}s</p>`;
+            }
+            
             resultDiv.innerHTML = `
                 <h3>✅ Result</h3>
                 <p><strong>Model:</strong> ${data.model}</p>
+                ${timeInfo}
                 <pre>${data.response}</pre>
             `;
             resultDiv.style.display = 'block';
@@ -496,8 +510,82 @@
             document.getElementById('face-result').style.display = 'none';
         }
         
+        // Load available models
+        async function loadAvailableModels() {
+            try {
+                const response = await fetch('/v1/vision-models');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                const modelSelect = document.getElementById('model-select');
+                
+                // Clear loading option
+                modelSelect.innerHTML = '';
+                
+                // Group models by backend
+                const onnxModels = data.data.filter(m => m.backend === 'ONNX');
+                const pytorchModels = data.data.filter(m => m.backend.includes('PyTorch'));
+                
+                // Add ONNX models first
+                if (onnxModels.length > 0) {
+                    const onnxGroup = document.createElement('optgroup');
+                    onnxGroup.label = 'ONNX Models (Optimized)';
+                    
+                    onnxModels.forEach((model, index) => {
+                        const option = document.createElement('option');
+                        option.value = model.id;
+                        option.textContent = `${model.name} (${model.description})`;
+                        
+                        // Select the first ONNX model by default
+                        if (index === 0) {
+                            option.selected = true;
+                        }
+                        
+                        onnxGroup.appendChild(option);
+                    });
+                    
+                    modelSelect.appendChild(onnxGroup);
+                }
+                
+                // Add PyTorch models
+                if (pytorchModels.length > 0) {
+                    const pytorchGroup = document.createElement('optgroup');
+                    pytorchGroup.label = 'PyTorch Models (Experimental)';
+                    
+                    pytorchModels.forEach(model => {
+                        const option = document.createElement('option');
+                        option.value = model.id;
+                        option.textContent = `${model.name} (${model.description})`;
+                        pytorchGroup.appendChild(option);
+                    });
+                    
+                    modelSelect.appendChild(pytorchGroup);
+                }
+                
+                // If no models available, show message
+                if (data.data.length === 0) {
+                    const option = document.createElement('option');
+                    option.value = '';
+                    option.textContent = 'No models available - check download management';
+                    option.disabled = true;
+                    option.selected = true;
+                    modelSelect.appendChild(option);
+                }
+                
+            } catch (error) {
+                console.error('Error loading models:', error);
+                const modelSelect = document.getElementById('model-select');
+                modelSelect.innerHTML = '<option value="" disabled selected>Error loading models</option>';
+            }
+        }
+
         // Initialize upload zones
         document.addEventListener('DOMContentLoaded', () => {
+            // Load models first
+            loadAvailableModels();
+            
             setupUploadZone('vision-upload', 'vision-file', (file, dataUrl) => {
                 visionImage = dataUrl;
             });

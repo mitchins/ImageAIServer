@@ -24,7 +24,49 @@ import numpy as np
 
 
 def create_pizza_image():
-    """Create a simple but recognizable pizza image."""
+    """Download and prepare a real pizza image from Wikipedia."""
+    import urllib.request
+    import urllib.error
+    
+    # Real pizza image from Wikipedia Commons
+    pizza_url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ_b18AhX_x9OGzOALgqMRzkatTATIQB3fIww&s"
+    
+    print("🍕 Downloading real pizza image from Wikipedia...")
+    
+    try:
+        # Download the image
+        with urllib.request.urlopen(pizza_url) as response:
+            img_data = response.read()
+        
+        # Load and process the image
+        img = Image.open(io.BytesIO(img_data)).convert('RGB')
+        
+        # Resize to reasonable size for testing (keep aspect ratio)
+        original_size = img.size
+        img.thumbnail((512, 512), Image.Resampling.LANCZOS)
+        
+        print(f"   Downloaded real pizza image: {original_size} -> {img.size}")
+        
+        # Save for reference
+        img.save("real_pizza_from_wikipedia.png")
+        print("   Saved real pizza image as: real_pizza_from_wikipedia.png")
+        
+        # Convert to base64
+        buffer = io.BytesIO()
+        img.save(buffer, format='PNG')
+        img_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        
+        return img_base64, img
+        
+    except (urllib.error.URLError, urllib.error.HTTPError, Exception) as e:
+        # Fallback to synthetic pizza if download fails
+        print(f"⚠️ Could not download real pizza image ({e})")
+        print("   Falling back to synthetic pizza...")
+        return create_fallback_pizza_image()
+
+
+def create_fallback_pizza_image():
+    """Create a simple but recognizable fallback pizza image."""
     print("🍕 Creating synthetic pizza image...")
     
     # Create a circular pizza base
@@ -52,10 +94,6 @@ def create_pizza_image():
                         (center_x + 70, center_y - 80),
                         (center_x - 50, center_y + 70),
                         (center_x + 90, center_y + 40),
-                        (center_x - 20, center_y - 100),
-                        (center_x + 30, center_y + 90),
-                        (center_x - 100, center_y + 20),
-                        (center_x + 50, center_y - 30),
                     ]
                     
                     for px, py in pepperoni_positions:
@@ -70,8 +108,8 @@ def create_pizza_image():
     img = Image.fromarray(pixels.astype('uint8'))
     
     # Save for reference
-    img.save("synthetic_pizza.png")
-    print("   Saved synthetic pizza image as: synthetic_pizza.png")
+    img.save("synthetic_pizza_fallback.png")
+    print("   Saved synthetic pizza image as: synthetic_pizza_fallback.png")
     
     # Convert to base64
     buffer = io.BytesIO()

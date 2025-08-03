@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Any, Tuple, Union
 from enum import Enum
 
 from .model_backend import ModelBackend, ModelLoader, InferenceEngine, BackendConfig
+from .model_identifier import UnifiedModelManager, ModelBackendType
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +125,8 @@ class ModelManager:
         self, 
         model_name: str, 
         backend: Optional[BackendType] = None,
+        _already_resolved: bool = False,
+        _original_model_name: Optional[str] = None,
         **kwargs
     ) -> InferenceEngine:
         """Load a model using appropriate backend."""
@@ -134,43 +137,96 @@ class ModelManager:
             logger.info(f"Using cached model {model_name} with {used_backend} backend")
             return engine
         
+        # Resolve model name using unified system first (unless already resolved)
+        resolved_model_name = model_name
+        resolved_backend = backend
+        
+        if not _already_resolved:
+            try:
+                # Try resolving with unified model manager
+                preferred_backend = None
+                if backend == BackendType.ONNX:
+                    preferred_backend = ModelBackendType.ONNX
+                elif backend == BackendType.PYTORCH:
+                    preferred_backend = ModelBackendType.PYTORCH
+                
+                repo_id, unified_backend, quantization = UnifiedModelManager.resolve_model(
+                    model_name, preferred_backend
+                )
+                
+                # Use resolved repo_id as the model name for loading
+                resolved_model_name = repo_id
+                
+                # Use resolved backend if we didn't specify one
+                if backend is None:
+                    resolved_backend = BackendType.ONNX if unified_backend == ModelBackendType.ONNX else BackendType.PYTORCH
+                    logger.info(f"Resolved '{model_name}' -> repo_id='{repo_id}', backend={resolved_backend}, quantization={quantization}")
+            except Exception as e:
+                logger.debug(f"Could not resolve model with unified system: {e}")
+                # Fall back to original logic
+        else:
+            logger.debug(f"Skipping unified resolution for already resolved model: '{model_name}'")
+        
         # Select backend
-        if backend is None:
-            backend = self.select_backend_for_model(model_name)
+        if resolved_backend is None:
+            resolved_backend = self.select_backend_for_model(resolved_model_name)
         
-        if backend not in self.loaders:
-            raise ValueError(f"Backend {backend} not available. Available: {self.get_available_backends()}")
+        if resolved_backend not in self.loaders:
+            raise ValueError(f"Backend {resolved_backend} not available. Available: {self.get_available_backends()}")
         
-        loader = self.loaders[backend]
+        loader = self.loaders[resolved_backend]
         
         try:
             # Load model based on backend type
-            if backend == BackendType.ONNX:
+            if resolved_backend == BackendType.ONNX:
+                # For ONNX curated models, preserve original model name with quantization
+                # Check if original model name has curated config
+                from .model_types import get_curated_model_config
+                if (_already_resolved and _original_model_name and 
+                    '/' in _original_model_name and 
+                    get_curated_model_config(_original_model_name) is not None):
+                    # Use original model name to preserve quantization info
+                    onnx_model_name = _original_model_name
+                    logger.info(f"Using original curated model name for ONNX: '{onnx_model_name}' (instead of resolved '{resolved_model_name}')")
+                else:
+                    # Use resolved repo_id for non-curated models
+                    onnx_model_name = resolved_model_name
+                
                 # ONNX returns (sessions, tokenizer, config)
-                sessions, tokenizer, config = loader.load_model(model_name)
+                sessions, tokenizer, config = loader.load_model(onnx_model_name)
                 engine = ONNXInferenceEngine(sessions, tokenizer, config)
-            elif backend == BackendType.PYTORCH:
+            elif resolved_backend == BackendType.PYTORCH:
                 # PyTorch returns (model, tokenizer, config)
-                model, tokenizer, config = loader.load_model(model_name)
+                model, tokenizer, config = loader.load_model(resolved_model_name)
                 engine = PyTorchInferenceEngine(model, tokenizer, config)
             else:
-                raise ValueError(f"Unknown backend type: {backend}")
+                raise ValueError(f"Unknown backend type: {resolved_backend}")
             
             # Cache the loaded model
-            self.loaded_models[cache_key] = (engine, backend)
-            logger.info(f"Successfully loaded {model_name} with {backend} backend")
+            self.loaded_models[cache_key] = (engine, resolved_backend)
+            logger.info(f"Successfully loaded {model_name} with {resolved_backend} backend")
             
             return engine
             
         except Exception as e:
-            logger.error(f"Failed to load {model_name} with {backend} backend: {e}")
+            logger.error(f"Failed to load {model_name} with {resolved_backend} backend: {e}")
             
-            # Try fallback backend if using auto
-            if backend == self.select_backend_for_model(model_name):
-                other_backends = [b for b in self.get_available_backends() if b != backend]
-                if other_backends:
-                    logger.info(f"Attempting fallback to {other_backends[0]} backend")
-                    return self.load_model(model_name, backend=other_backends[0], **kwargs)
+            # Try fallback backend if using auto, but be smart about ONNX-only repos
+            if resolved_backend == self.select_backend_for_model(resolved_model_name):
+                # Don't try PyTorch fallback for ONNX-only repositories
+                is_onnx_only_repo = (
+                    "onnx-community" in resolved_model_name or 
+                    resolved_model_name.endswith("-ONNX") or
+                    "onnx" in resolved_model_name.lower()
+                )
+                
+                if not is_onnx_only_repo:
+                    other_backends = [b for b in self.get_available_backends() if b != resolved_backend]
+                    if other_backends:
+                        logger.info(f"Attempting fallback to {other_backends[0]} backend")
+                        return self.load_model(model_name, backend=other_backends[0], **kwargs)
+                else:
+                    logger.warning(f"ONNX-only repository {resolved_model_name} failed to load - no fallback attempted")
             
             raise
     
@@ -185,7 +241,25 @@ class ModelManager:
         **kwargs
     ) -> str:
         """Generate text using specified model and backend."""
-        engine = self.load_model(model_name, backend=backend)
+        # Resolve model name using unified system
+        preferred_backend = None
+        if backend == BackendType.ONNX:
+            preferred_backend = ModelBackendType.ONNX
+        elif backend == BackendType.PYTORCH:
+            preferred_backend = ModelBackendType.PYTORCH
+        
+        repo_id, resolved_backend, quantization = UnifiedModelManager.resolve_model(
+            model_name, preferred_backend
+        )
+        
+        # Convert back to our BackendType enum
+        final_backend = BackendType.ONNX if resolved_backend == ModelBackendType.ONNX else BackendType.PYTORCH
+        
+        logger.info(f"Resolved '{model_name}' -> repo_id='{repo_id}', backend={final_backend}, quantization={quantization}")
+        
+        # Skip the unified resolution in load_model since we already resolved it here
+        # Pass both resolved repo_id and original model name for curated models
+        engine = self.load_model(repo_id, backend=final_backend, _already_resolved=True, _original_model_name=model_name)
         return engine.generate_text(text, max_tokens, images, audio, **kwargs)
     
     def get_model_info(self, model_name: str) -> Dict[str, Any]:
