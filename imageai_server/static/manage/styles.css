@@ -1,0 +1,145 @@
+/* ImageAI Server - Minimal Custom Styles for Materialize Integration */
+
+/* Custom gradient for branding elements */
+.imageai-gradient {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+}
+
+/* Ensure main content has proper spacing below navigation */
+.container {
+    margin-top: 2rem;
+}
+
+/* Material Icons styling for consistency */
+.material-symbols-rounded {
+    font-variation-settings:
+        'FILL' 0,
+        'wght' 400,
+        'GRAD' 0,
+        'opsz' 24;
+    vertical-align: middle;
+}
+
+/* Fix the float issue that's causing top alignment */
+.material-symbols-rounded.left {
+    float: none !important;
+    margin-right: 0 !important; /* Use gap instead of margin for consistent spacing */
+    vertical-align: middle !important;
+}
+
+/* Fallback margin for contexts without gap support */
+nav:not(.nav-wrapper) .material-symbols-rounded.left {
+    margin-right: 8px !important;
+}
+
+/* Navigation icon alignment fixes - use flexbox for proper centering */
+/* Target all navigation links regardless of structure */
+nav ul li a,
+nav .nav-wrapper > a,
+nav .nav-wrapper a {
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.5rem !important;
+}
+
+nav .brand-logo {
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.5rem !important;
+}
+
+/* Form icon weight reduction for better typography */
+.input-field .prefix.material-symbols-rounded {
+    font-variation-settings:
+        'FILL' 0,
+        'wght' 300,
+        'GRAD' 0,
+        'opsz' 24;
+    color: #9e9e9e;
+}
+
+/* Card content icons - lighter weight and proper alignment */
+.card-title {
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.5rem !important;
+}
+
+.card-content .material-symbols-rounded {
+    font-variation-settings:
+        'FILL' 0,
+        'wght' 300,
+        'GRAD' 0,
+        'opsz' 24;
+    float: none !important;
+    vertical-align: middle !important;
+}
+
+.card-title .material-symbols-rounded.left {
+    margin-right: 0 !important; /* Use gap instead */
+}
+
+/* Button icons - medium weight and proper alignment */
+.btn {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0.5rem !important;
+}
+
+.btn .material-symbols-rounded {
+    font-variation-settings:
+        'FILL' 0,
+        'wght' 400,
+        'GRAD' 0,
+        'opsz' 20;
+    float: none !important;
+    vertical-align: middle !important;
+}
+
+.btn .material-symbols-rounded.left {
+    margin-right: 0 !important; /* Use gap instead */
+}
+
+/* Override for large icons */
+.material-symbols-rounded.large {
+    font-size: 2.5rem;
+    font-variation-settings:
+        'FILL' 0,
+        'wght' 300,
+        'GRAD' 0,
+        'opsz' 48;
+}
+
+/* Custom card hover effects */
+.card.hoverable:hover {
+    box-shadow: 0 8px 17px 0 rgba(0,0,0,0.2), 0 6px 20px 0 rgba(0,0,0,0.19);
+    transform: translateY(-2px);
+    transition: all 0.3s ease;
+}
+
+/* Status indicators */
+.status-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 16px;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.status-success {
+    background-color: #e8f5e9;
+    color: #2e7d32;
+}
+
+.status-error {
+    background-color: #ffebee;
+    color: #c62828;
+}
+
+.status-warning {
+    background-color: #fff3e0;
+    color: #ef6c00;
+}

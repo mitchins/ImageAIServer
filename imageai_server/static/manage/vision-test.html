@@ -3,10 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ImageAI Vision & Face Test UI</title>
+    <title>Vision & Face Testing - ImageAI Server</title>
+    <link rel="icon" href="/static/icon.png" type="image/png">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
+    <!-- Materialize CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+    <!-- Material Icons -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200">
+    <!-- Minimal custom styles -->
+    <link rel="stylesheet" href="styles.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -211,10 +218,17 @@
 <body>
     <script src="navigation.js"></script>
     
-    <div class="main-container">
-        <div class="page-header">
-            <h1>🎯 Vision & Face Testing</h1>
-            <p>Test vision-language models and face comparison APIs with drag & drop</p>
+    <div class="container">
+        <div class="row">
+            <div class="col s12">
+                <div class="card-panel center-align imageai-gradient white-text" style="margin-top: 2rem;">
+                    <h3 style="margin-bottom: 0.5rem;">
+                        <span class="material-symbols-rounded large" style="vertical-align: middle; margin-right: 0.5rem;">visibility</span>
+                        Image Chat & Face Testing
+                    </h3>
+                    <p style="opacity: 0.9; margin: 0;">Test vision-language models and face comparison APIs with drag & drop</p>
+                </div>
+            </div>
         </div>
         
         <div class="tabs">
@@ -232,7 +246,7 @@
             </div>
             
             <div class="upload-zone" id="vision-upload">
-                <div class="upload-text">📷 Drop an image here or click to select</div>
+                <div class="upload-text"><i class="fas fa-camera"></i> Drop an image here or click to select</div>
                 <div class="upload-hint">Supports JPG, PNG, WebP</div>
                 <input type="file" id="vision-file" accept="image/*" style="display: none;">
             </div>
@@ -260,14 +274,14 @@
             <div class="face-comparison">
                 <div>
                     <div class="upload-zone" id="face-upload-a">
-                        <div class="upload-text">👤 Drop Face A here</div>
+                        <div class="upload-text"><i class="fas fa-user"></i> Drop Face A here</div>
                         <div class="upload-hint">First face to compare</div>
                         <input type="file" id="face-file-a" accept="image/*" style="display: none;">
                     </div>
                 </div>
                 <div>
                     <div class="upload-zone" id="face-upload-b">
-                        <div class="upload-text">👤 Drop Face B here</div>
+                        <div class="upload-text"><i class="fas fa-user"></i> Drop Face B here</div>
                         <div class="upload-hint">Second face to compare</div>
                         <input type="file" id="face-file-b" accept="image/*" style="display: none;">
                     </div>
@@ -501,8 +515,8 @@
             const zoneA = document.getElementById('face-upload-a');
             const zoneB = document.getElementById('face-upload-b');
             
-            zoneA.innerHTML = '<div class="upload-text">👤 Drop Face A here</div><div class="upload-hint">First face to compare</div>';
-            zoneB.innerHTML = '<div class="upload-text">👤 Drop Face B here</div><div class="upload-hint">Second face to compare</div>';
+            zoneA.innerHTML = '<div class="upload-text"><i class="fas fa-user"></i> Drop Face A here</div><div class="upload-hint">First face to compare</div>';
+            zoneB.innerHTML = '<div class="upload-text"><i class="fas fa-user"></i> Drop Face B here</div><div class="upload-hint">Second face to compare</div>';
             
             zoneA.classList.remove('has-image');
             zoneB.classList.remove('has-image');

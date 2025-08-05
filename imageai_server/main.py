@@ -1,12 +1,15 @@
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi.templating import Jinja2Templates
 from fastapi.openapi.docs import get_swagger_ui_html
 import importlib
 import pkgutil
 import logging
+import time
+import psutil
 from .shared.manage_cache import list_cached_entries
 from .shared.model_types import ModelType
 
@@ -19,6 +22,13 @@ app = FastAPI(
 )
 
 STATIC_DIR = Path(__file__).resolve().parent / "static" / "manage"
+TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+
+# Initialize Jinja2 templates
+templates = Jinja2Templates(directory=TEMPLATES_DIR)
+
+# Track server start time for uptime calculation
+SERVER_START_TIME = time.time()
 
 # Auto-discover and register all routers
 def register_routers():
@@ -56,216 +66,12 @@ register_routers()
 
 # Root redirect to main UI
 @app.get("/", response_class=HTMLResponse)
-async def root():
+async def root(request: Request):
     """Root endpoint with helpful navigation to all UIs."""
-    return HTMLResponse(content="""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ImageAI Server</title>
-    <style>
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f8f9fa;
-            margin: 0;
-            padding: 0;
-            min-height: 100vh;
-        }
-        
-        .main-container { 
-            max-width: 1000px;
-            margin: 2rem auto;
-            padding: 0 2rem;
-            text-align: center;
-        }
-        
-        h1 { 
-            font-size: 2.5rem; 
-            margin-bottom: 1rem; 
-            color: #333;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        
-        .subtitle { 
-            color: #666; 
-            font-size: 1.2rem; 
-            margin-bottom: 2rem; 
-        }
-        
-        .links { 
-            display: grid; 
-            gap: 1.5rem; 
-            margin: 2rem 0; 
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-        }
-        
-        .link { 
-            display: block; 
-            padding: 1.5rem 2rem; 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 12px; 
-            text-decoration: none; 
-            color: white;
-            transition: all 0.3s ease; 
-            font-size: 1.1rem;
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-        }
-        
-        .link:hover { 
-            transform: translateY(-4px);
-            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
-        }
-        
-        .link strong { 
-            display: block; 
-            font-size: 1.3rem; 
-            margin-bottom: 0.5rem; 
-        }
-        
-        .link small { 
-            opacity: 0.9; 
-            font-size: 1rem; 
-        }
-        
-        .status { 
-            margin-top: 2rem; 
-            padding: 1rem 0; 
-            color: #155724;
-            border-left: 4px solid #28a745;
-            padding-left: 1rem;
-            text-align: left;
-        }
-        
-        .api-endpoints { 
-            margin-top: 2rem; 
-            text-align: left; 
-            color: #495057;
-            padding: 1.5rem 0; 
-            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-            border-top: 1px solid #e9ecef;
-            padding-top: 1.5rem;
-        }
-        
-        .api-endpoints strong { 
-            color: #333; 
-            display: block; 
-            margin-bottom: 0.5rem; 
-        }
-        
-        .endpoint { 
-            margin: 0.5rem 0; 
-            padding: 0.3rem 0; 
-            color: #6f42c1; 
-        }
-        
-        @media (max-width: 768px) {
-            .main-container { 
-                margin: 1rem; 
-                padding: 1.5rem; 
-            }
-            .links { 
-                grid-template-columns: 1fr; 
-            }
-        }
-    </style>
-</head>
-<body>
-    <script src="/static/manage/navigation.js"></script>
-    
-    <div class="main-container">
-        <h1><img src="/static/icon.png" alt="ImageAIServer Icon" style="height: 1em; vertical-align: middle;"> ImageAIServer</h1>
-        <p class="subtitle">Privacy-focused AI inference server monitoring and quick access</p>
-        
-        <!-- Server Status Section -->
-        <div class="status">
-            ✅ <strong>Server Status:</strong> Running and healthy<br>
-            <div style="margin-top: 0.5rem; font-size: 0.9rem;">
-                <span id="backend-status">Loading backend status...</span>
-            </div>
-        </div>
-        
-        <script>
-        // Load backend status
-        fetch('/v1/backends')
-            .then(response => response.json())
-            .then(data => {
-                const onnxStatus = data.backends.onnx.available ? '✅ ONNX' : '❌ ONNX';
-                const pytorchStatus = data.backends.pytorch.available ? '✅ PyTorch' : '❌ PyTorch';
-                const onnxCount = data.backends.onnx.models_count || 0;
-                const pytorchCount = data.backends.pytorch.models_count || 0;
-                
-                // Build GPU status
-                let gpuStatus = '';
-                if (data.gpu) {
-                    const gpu = data.gpu;
-                    if (gpu.error || gpu.torch_not_available) {
-                        gpuStatus = '❌ GPU';
-                    } else {
-                        const parts = [];
-                        if (gpu.cuda_available) {
-                            parts.push(`✅ CUDA (${gpu.cuda_device_count} device${gpu.cuda_device_count !== 1 ? 's' : ''})`);
-                        }
-                        if (gpu.mps_available) {
-                            parts.push('✅ MPS');
-                        }
-                        if (parts.length === 0) {
-                            parts.push('💻 CPU only');
-                        }
-                        gpuStatus = parts.join(', ');
-                        
-                        if (gpu.current_device) {
-                            gpuStatus += ` | Using: ${gpu.current_device}`;
-                        }
-                    }
-                }
-                
-                document.getElementById('backend-status').innerHTML = 
-                    `<strong>Backends:</strong> ${onnxStatus} (${onnxCount} models), ${pytorchStatus} (${pytorchCount} models)<br>` +
-                    `<strong>Acceleration:</strong> ${gpuStatus}`;
-            })
-            .catch(() => {
-                document.getElementById('backend-status').innerHTML = 
-                    '<strong>Backends:</strong> Status unavailable';
-            });
-        </script>
-        
-        <!-- Quick Actions Section -->
-        <h2 style="margin-top: 2rem; margin-bottom: 1rem; color: #333;">Quick Actions</h2>
-        <div class="links">
-            <a href="/manage/ui/" class="link">
-                🌐 <strong>Model Management</strong>
-                <small>Download and manage ONNX models</small>
-            </a>
-            <a href="/manage/ui/vision-test.html" class="link">
-                🎯 <strong>Vision & Face Testing</strong>
-                <small>Drag & drop testing interface</small>
-            </a>
-            <a href="/docs" class="link">
-                📚 <strong>API Documentation</strong>
-                <small>Interactive OpenAPI docs</small>
-            </a>
-        </div>
-        
-        <!-- API Information Section -->
-        <h2 style="margin-top: 2rem; margin-bottom: 1rem; color: #333;">API Endpoints</h2>
-        <div class="api-endpoints">
-            <div class="endpoint"><strong>POST</strong> /v1/chat/completions <span style="color: #666;">• Vision + text inference (ONNX)</span></div>
-            <div class="endpoint"><strong>POST</strong> /chat-server/v1/chat/completions/torch <span style="color: #666;">• PyTorch models (optional)</span></div>
-            <div class="endpoint"><strong>POST</strong> /v1/image/compare_faces <span style="color: #666;">• Face comparison</span></div>
-            <div class="endpoint"><strong>POST</strong> /v1/images/generations <span style="color: #666;">• Image generation</span></div>
-            <div class="endpoint"><strong>GET</strong> /v1/backends <span style="color: #666;">• Backend availability status</span></div>
-            <div class="endpoint"><strong>GET</strong> /v1/models <span style="color: #666;">• List available models</span></div>
-            <div class="endpoint"><strong>GET</strong> /health <span style="color: #666;">• Server health check</span></div>
-        </div>
-    </div>
-</body>
-</html>
-    """)
+    return templates.TemplateResponse("home.html", {
+        "request": request,
+        "current_page": "home"
+    })
 
 # Quick redirect for common paths
 @app.get("/ui")
@@ -278,106 +84,66 @@ async def test_redirect():
     """Redirect /test to the vision test UI."""
     return RedirectResponse(url="/manage/ui/vision-test.html")
 
+@app.get("/generate", response_class=HTMLResponse)
+async def generate_page(request: Request):
+    """Generate images page."""
+    return templates.TemplateResponse("generate.html", {
+        "request": request,
+        "current_page": "generate"
+    })
+
+@app.get("/manage/ui/generate.html")
+async def generate_redirect():
+    """Redirect old generate URL to new route."""
+    return RedirectResponse(url="/generate")
+
+@app.get("/favicon.ico")
+async def favicon():
+    """Redirect favicon requests to the static icon."""
+    return RedirectResponse(url="/static/icon.png")
+
+@app.get("/models", response_class=HTMLResponse)
+async def models_page(request: Request):
+    """Model management page."""
+    return templates.TemplateResponse("models.html", {
+        "request": request,
+        "current_page": "models"
+    })
+
+@app.get("/vision-chat", response_class=HTMLResponse)
+async def vision_chat_page(request: Request):
+    """Vision chat page."""
+    return templates.TemplateResponse("vision-chat.html", {
+        "request": request,
+        "current_page": "test"
+    })
+
+@app.get("/compare-faces", response_class=HTMLResponse)
+async def compare_faces_page(request: Request):
+    """Face comparison page."""
+    return templates.TemplateResponse("compare-faces.html", {
+        "request": request,
+        "current_page": "compare-faces"
+    })
+
+# Redirects for old URLs
+@app.get("/manage/ui/")
+async def models_redirect():
+    """Redirect old models URL to new route."""
+    return RedirectResponse(url="/models")
+
+@app.get("/manage/ui/vision-test.html")
+async def vision_test_redirect():
+    """Redirect old vision test URL to new route."""
+    return RedirectResponse(url="/vision-chat")
+
 @app.get("/docs", response_class=HTMLResponse)
-async def custom_swagger_ui_html():
+async def custom_swagger_ui_html(request: Request):
     """Custom docs page with navigation."""
-    return HTMLResponse(content=f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <title>ImageAIServer API Documentation</title>
-    <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui.css" />
-    <style>
-        body { margin: 0; padding: 0; }
-        .imageai-nav {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            position: sticky;
-            top: 0;
-            z-index: 1000;
-        }
-        .nav-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0 1rem;
-            height: 60px;
-        }
-        .nav-brand .brand-link {
-            color: white;
-            text-decoration: none;
-            font-size: 1.5rem;
-            font-weight: bold;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        .nav-brand .brand-link:hover { color: rgba(255,255,255,0.9); }
-        .nav-links {
-            display: flex;
-            gap: 0.5rem;
-            align-items: center;
-        }
-        .nav-link {
-            color: rgba(255,255,255,0.9);
-            text-decoration: none;
-            padding: 0.5rem 1rem;
-            border-radius: 6px;
-            transition: all 0.3s ease;
-            font-size: 0.9rem;
-            white-space: nowrap;
-        }
-        .nav-link:hover {
-            background: rgba(255,255,255,0.1);
-            color: white;
-            transform: translateY(-1px);
-        }
-        .nav-link.active {
-            background: rgba(255,255,255,0.2);
-            color: white;
-        }
-        #swagger-ui { padding-top: 0; }
-        .swagger-ui .topbar { display: none; }
-    </style>
-</head>
-<body>
-    <nav class="imageai-nav">
-        <div class="nav-container">
-            <div class="nav-brand">
-                <a href="/" class="brand-link">🤖 ImageAIServer</a>
-            </div>
-            <div class="nav-links">
-                <a href="/" class="nav-link" title="Home">🏠 Home</a>
-                <a href="/manage/ui/" class="nav-link" title="Model Management">🌐 Models</a>
-                <a href="/manage/ui/vision-test.html" class="nav-link" title="Vision & Face Testing">🎯 Test</a>
-                <a href="/docs" class="nav-link active" title="API Documentation">📚 Docs</a>
-            </div>
-        </div>
-    </nav>
-    
-    <div id="swagger-ui"></div>
-    
-    <script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-bundle.js"></script>
-    <script>
-        const ui = SwaggerUIBundle({
-            url: '/openapi.json',
-            dom_id: '#swagger-ui',
-            presets: [
-                SwaggerUIBundle.presets.apis,
-                SwaggerUIBundle.presets.standalone
-            ],
-            layout: "BaseLayout",
-            deepLinking: true,
-            showExtensions: true,
-            showCommonExtensions: true,
-            tryItOutEnabled: true
-        });
-    </script>
-</body>
-</html>
-    """)
+    return templates.TemplateResponse("docs.html", {
+        "request": request,
+        "current_page": "docs"
+    })
 
 app.mount(
     "/manage/ui",
@@ -507,6 +273,45 @@ async def list_models():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/v1/system/status")
+async def get_system_status():
+    """Get system status including uptime and memory usage."""
+    try:
+        # Calculate uptime
+        current_time = time.time()
+        uptime_seconds = current_time - SERVER_START_TIME
+        uptime_hours = uptime_seconds / 3600
+        
+        # Get memory usage
+        process = psutil.Process()
+        memory_info = process.memory_info()
+        memory_usage_mb = memory_info.rss / 1024 / 1024  # Convert bytes to MB
+        
+        # Get system memory info
+        system_memory = psutil.virtual_memory()
+        system_memory_total_gb = system_memory.total / 1024 / 1024 / 1024
+        system_memory_used_percent = system_memory.percent
+        
+        return {
+            "uptime_seconds": uptime_seconds,
+            "uptime_hours": uptime_hours,
+            "memory_usage_mb": memory_usage_mb,
+            "system_memory_total_gb": system_memory_total_gb,
+            "system_memory_used_percent": system_memory_used_percent,
+            "status": "healthy"
+        }
+    except Exception as e:
+        return {
+            "uptime_seconds": None,
+            "uptime_hours": None,
+            "memory_usage_mb": None,
+            "system_memory_total_gb": None,
+            "system_memory_used_percent": None,
+            "status": "error",
+            "error": str(e)
+        }
 
 
 def _is_model_downloaded(repo_id: str, required_files: Optional[List[str]] = None) -> bool:

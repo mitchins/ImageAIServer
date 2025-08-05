@@ -1,0 +1,377 @@
+{% extends "base.html" %}
+
+{% block title %}Generate Images - ImageAI Server{% endblock %}
+
+{% block content %}
+<div class="container">
+    <!-- Header -->
+    <div class="row">
+        <div class="col s12">
+            <div class="card-panel center-align" style="margin-top: 2rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <h3 style="margin-bottom: 0.5rem;">
+                    <span class="material-symbols-rounded" style="font-size: 2.5rem; vertical-align: middle; margin-right: 0.5rem;">palette</span>
+                    Generate Images
+                </h3>
+                <p style="opacity: 0.9; margin: 0;">Create images using state-of-the-art AI models</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Form -->
+    <div class="row">
+        <div class="col s12">
+            <div class="card">
+                <div class="card-content">
+                    <!-- Prompt -->
+                    <div class="row">
+                        <div class="input-field col s12">
+                            <span class="material-symbols-rounded prefix">edit_note</span>
+                            <textarea id="prompt-input" class="materialize-textarea" data-length="500">A beautiful landscape with mountains and a lake at sunset</textarea>
+                            <label for="prompt-input">Prompt</label>
+                        </div>
+                    </div>
+                    
+                    <!-- Negative Prompt -->
+                    <div class="row">
+                        <div class="input-field col s12">
+                            <span class="material-symbols-rounded prefix">do_not_disturb_on</span>
+                            <textarea id="negative-prompt-input" class="materialize-textarea" data-length="250"></textarea>
+                            <label for="negative-prompt-input">Negative Prompt (Optional)</label>
+                        </div>
+                    </div>
+                    
+                    <!-- Settings Row -->
+                    <div class="row">
+                        <div class="input-field col s12 m6 l3">
+                            <span class="material-symbols-rounded prefix">model_training</span>
+                            <select id="model-select">
+                                <option value="flux1-schnell">FLUX.1 Schnell (Fast)</option>
+                                <option value="sdxl">Stable Diffusion XL</option>
+                                <option value="sdxl-turbo">SDXL Turbo (Very Fast)</option>
+                                <option value="qwen-image">Qwen Image</option>
+                            </select>
+                            <label>Model</label>
+                        </div>
+                        
+                        <div class="input-field col s12 m6 l3">
+                            <span class="material-symbols-rounded prefix">counter_1</span>
+                            <input type="number" id="count-input" value="1" min="1" max="4">
+                            <label for="count-input">Count</label>
+                        </div>
+                        
+                        <div class="input-field col s12 m6 l3">
+                            <span class="material-symbols-rounded prefix">straighten</span>
+                            <input type="number" id="width-input" value="928" min="256" max="2048" step="64">
+                            <label for="width-input">Width</label>
+                        </div>
+                        
+                        <div class="input-field col s12 m6 l3">
+                            <span class="material-symbols-rounded prefix">height</span>
+                            <input type="number" id="height-input" value="928" min="256" max="2048" step="64">
+                            <label for="height-input">Height</label>
+                        </div>
+                    </div>
+                    
+                    <!-- Action Buttons -->
+                    <div class="row">
+                        <div class="col s12 center-align">
+                            <button id="generate-btn" class="btn-large waves-effect waves-light" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin-right: 1rem;" onclick="generateImage()">
+                                <span id="generate-spinner" class="preloader-wrapper active" style="display: none; width: 20px; height: 20px; margin-right: 0.5rem;">
+                                    <div class="spinner-layer spinner-white-only">
+                                        <div class="circle-clipper left">
+                                            <div class="circle"></div>
+                                        </div>
+                                        <div class="gap-patch">
+                                            <div class="circle"></div>
+                                        </div>
+                                        <div class="circle-clipper right">
+                                            <div class="circle"></div>
+                                        </div>
+                                    </div>
+                                </span>
+                                <span class="material-symbols-rounded left" id="generate-icon">auto_fix_high</span>
+                                Generate
+                            </button>
+                            
+                            <button id="clear-btn" class="btn-large red waves-effect waves-light" onclick="clearResults()" style="display: none;">
+                                <span class="material-symbols-rounded left">clear</span>
+                                Clear
+                            </button>
+                            
+                            <div style="margin-top: 1rem;">
+                                <span id="generation-info" class="grey-text"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Results -->
+    <div id="results-container" style="display: none;">
+        <div class="row">
+            <div class="col s12">
+                <div class="card">
+                    <div class="card-content">
+                        <span class="card-title">
+                            <span class="material-symbols-rounded left">collections</span>
+                            Generated Images
+                        </span>
+                        <div id="image-gallery" class="row"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Error Display -->
+    <div id="error-container" class="card red lighten-5" style="display: none;">
+        <div class="card-content">
+            <span class="card-title red-text">
+                <span class="material-symbols-rounded left">error</span>
+                Error
+            </span>
+            <pre id="error-message" class="red-text text-darken-2"></pre>
+        </div>
+    </div>
+    
+    <!-- Example Prompts -->
+    <div class="row">
+        <div class="col s12">
+            <div class="card">
+                <div class="card-content">
+                    <span class="card-title">
+                        <span class="material-symbols-rounded left">lightbulb</span>
+                        Example Prompts
+                    </span>
+                    <div class="row">
+                        <div class="col s12 m6 l3">
+                            <div class="card hoverable" onclick="useExamplePrompt('A majestic mountain landscape at golden hour with snow-capped peaks reflecting in a crystal clear alpine lake')" style="cursor: pointer;">
+                                <div class="card-content center-align">
+                                    <span class="material-symbols-rounded" style="font-size: 2rem; color: #667eea;">landscape</span>
+                                    <h6>Landscape</h6>
+                                    <p class="grey-text text-darken-1" style="font-size: 0.8rem;">Mountain landscape at golden hour</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col s12 m6 l3">
+                            <div class="card hoverable" onclick="useExamplePrompt('A cute robot sitting in a garden surrounded by colorful flowers, digital art style')" style="cursor: pointer;">
+                                <div class="card-content center-align">
+                                    <span class="material-symbols-rounded" style="font-size: 2rem; color: #667eea;">android</span>
+                                    <h6>Character</h6>
+                                    <p class="grey-text text-darken-1" style="font-size: 0.8rem;">Cute robot in garden</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col s12 m6 l3">
+                            <div class="card hoverable" onclick="useExamplePrompt('Abstract geometric patterns in vibrant colors, modern art style')" style="cursor: pointer;">
+                                <div class="card-content center-align">
+                                    <span class="material-symbols-rounded" style="font-size: 2rem; color: #667eea;">category</span>
+                                    <h6>Abstract</h6>
+                                    <p class="grey-text text-darken-1" style="font-size: 0.8rem;">Geometric patterns</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col s12 m6 l3">
+                            <div class="card hoverable" onclick="useExamplePrompt('A cozy coffee shop interior with warm lighting, books on shelves, and steaming coffee cups')" style="cursor: pointer;">
+                                <div class="card-content center-align">
+                                    <span class="material-symbols-rounded" style="font-size: 2rem; color: #667eea;">store</span>
+                                    <h6>Interior</h6>
+                                    <p class="grey-text text-darken-1" style="font-size: 0.8rem;">Cozy coffee shop</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block js_init %}
+M.FormSelect.init(document.querySelectorAll('select'));
+M.CharacterCounter.init(document.querySelectorAll('textarea[data-length]'));
+M.updateTextFields();
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let isGenerating = false;
+    
+    function useExamplePrompt(prompt) {
+        const promptInput = document.getElementById('prompt-input');
+        promptInput.value = prompt;
+        promptInput.focus();
+        M.textareaAutoResize(promptInput);
+        M.updateTextFields();
+    }
+    
+    async function generateImage() {
+        if (isGenerating) return;
+        
+        const prompt = document.getElementById('prompt-input').value.trim();
+        if (!prompt) {
+            M.toast({html: 'Please enter a prompt', classes: 'red'});
+            return;
+        }
+        
+        const generateBtn = document.getElementById('generate-btn');
+        const generateSpinner = document.getElementById('generate-spinner');
+        const generateIcon = document.getElementById('generate-icon');
+        const generationInfo = document.getElementById('generation-info');
+        const errorContainer = document.getElementById('error-container');
+        
+        // UI state
+        isGenerating = true;
+        generateBtn.disabled = true;
+        generateSpinner.style.display = 'inline-block';
+        generateIcon.style.display = 'none';
+        errorContainer.style.display = 'none';
+        generationInfo.textContent = 'Generating...';
+        
+        const startTime = Date.now();
+        
+        try {
+            const payload = {
+                prompt: prompt,
+                model: document.getElementById('model-select').value,
+                n: parseInt(document.getElementById('count-input').value),
+                width: parseInt(document.getElementById('width-input').value),
+                height: parseInt(document.getElementById('height-input').value),
+                negative_prompt: document.getElementById('negative-prompt-input').value.trim() || undefined
+            };
+            
+            const response = await fetch('/v1/images/generations', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+            
+            const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(data.detail || `HTTP ${response.status}`);
+            }
+            
+            const endTime = Date.now();
+            const generationTime = (endTime - startTime) / 1000;
+            
+            displayResults(data, generationTime, payload);
+            M.toast({html: 'Images generated successfully!', classes: 'green'});
+            
+        } catch (error) {
+            console.error('Generation error:', error);
+            showError(error.message);
+            M.toast({html: `Error: ${error.message}`, classes: 'red'});
+        } finally {
+            // Reset UI state
+            isGenerating = false;
+            generateBtn.disabled = false;
+            generateSpinner.style.display = 'none';
+            generateIcon.style.display = 'inline-block';
+            generationInfo.textContent = '';
+        }
+    }
+    
+    function displayResults(data, generationTime, params) {
+        const resultsContainer = document.getElementById('results-container');
+        const imageGallery = document.getElementById('image-gallery');
+        const clearBtn = document.getElementById('clear-btn');
+        
+        // Clear previous results
+        imageGallery.innerHTML = '';
+        
+        // Show results container
+        resultsContainer.style.display = 'block';
+        clearBtn.style.display = 'inline-block';
+        
+        // Display each generated image
+        data.data.forEach((imageData, index) => {
+            const colDiv = document.createElement('div');
+            colDiv.className = 'col s12 m6 l4';
+            
+            colDiv.innerHTML = `
+                <div class="card">
+                    <div class="card-image">
+                        <img src="data:image/png;base64,${imageData.b64_json}" alt="Generated image ${index + 1}">
+                    </div>
+                    <div class="card-content">
+                        <p><strong>Model:</strong> ${params.model}</p>
+                        <p><strong>Size:</strong> ${params.width}×${params.height}</p>
+                        <p><strong>Time:</strong> ${generationTime.toFixed(1)}s</p>
+                    </div>
+                    <div class="card-action">
+                        <a href="data:image/png;base64,${imageData.b64_json}" download="generated-${Date.now()}-${index + 1}.png" class="btn-small waves-effect waves-light">
+                            <span class="material-symbols-rounded left">download</span>Download
+                        </a>
+                    </div>
+                </div>
+            `;
+            
+            imageGallery.appendChild(colDiv);
+        });
+        
+        // Scroll to results
+        resultsContainer.scrollIntoView({ behavior: 'smooth' });
+    }
+    
+    function showError(message) {
+        const errorContainer = document.getElementById('error-container');
+        const errorMessage = document.getElementById('error-message');
+        
+        errorMessage.textContent = message;
+        errorContainer.style.display = 'block';
+        errorContainer.scrollIntoView({ behavior: 'smooth' });
+    }
+    
+    function clearResults() {
+        const resultsContainer = document.getElementById('results-container');
+        const errorContainer = document.getElementById('error-container');
+        const clearBtn = document.getElementById('clear-btn');
+        
+        resultsContainer.style.display = 'none';
+        errorContainer.style.display = 'none';
+        clearBtn.style.display = 'none';
+        
+        M.toast({html: 'Results cleared', classes: 'blue'});
+    }
+    
+    // Handle Enter key in prompt textarea
+    document.getElementById('prompt-input').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            generateImage();
+        }
+    });
+    
+    // Update dimensions for common aspect ratios
+    document.getElementById('model-select').addEventListener('change', function() {
+        const model = this.value;
+        const widthInput = document.getElementById('width-input');
+        const heightInput = document.getElementById('height-input');
+        
+        // Set optimal dimensions for each model
+        switch(model) {
+            case 'flux1-schnell':
+                widthInput.value = 1024;
+                heightInput.value = 1024;
+                break;
+            case 'sdxl':
+            case 'sdxl-turbo':
+                widthInput.value = 1024;
+                heightInput.value = 1024;
+                break;
+            case 'qwen-image':
+                widthInput.value = 928;
+                heightInput.value = 928;
+                break;
+        }
+        
+        M.updateTextFields();
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,435 @@
+{% extends "base.html" %}
+
+{% block title %}Vision Chat - ImageAI Server{% endblock %}
+
+{% block head %}
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: #f8f9fa;
+        min-height: 100vh;
+        margin: 0;
+        padding: 0;
+    }
+    .main-container {
+        max-width: 1200px;
+        margin: 2rem auto;
+        padding: 0 2rem;
+    }
+    .page-header {
+        padding: 2rem 0;
+        text-align: center;
+        border-bottom: 1px solid #e9ecef;
+        margin-bottom: 0;
+    }
+    .page-header h1 { 
+        font-size: 2rem; 
+        margin-bottom: 0.5rem; 
+        color: #333;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+    .page-header p { color: #666; font-size: 1.1rem; }
+    .content {
+        padding: 2rem 0;
+    }
+    
+    .upload-zone {
+        border: 3px dashed #e9ecef;
+        border-radius: 12px;
+        padding: 3rem;
+        text-align: center;
+        margin-bottom: 2rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        position: relative;
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+        border-color: #4facfe;
+        background: rgba(79, 172, 254, 0.05);
+    }
+    .upload-zone.has-image {
+        border-color: #28a745;
+        background: rgba(40, 167, 69, 0.05);
+    }
+    .upload-zone img {
+        max-width: 100%;
+        max-height: 200px;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+    .upload-text {
+        color: #6c757d;
+        font-size: 1.1rem;
+        margin-bottom: 0.5rem;
+    }
+    .upload-hint {
+        color: #adb5bd;
+        font-size: 0.9rem;
+    }
+    
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+    .form-group label {
+        display: block;
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+        color: #495057;
+    }
+    .form-control {
+        width: 100%;
+        padding: 0.75rem;
+        border: 2px solid #e9ecef;
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: border-color 0.3s ease;
+    }
+    .form-control:focus {
+        outline: none;
+        border-color: #4facfe;
+    }
+    textarea.form-control {
+        resize: vertical;
+        min-height: 100px;
+    }
+    
+    .btn {
+        padding: 0.75rem 2rem;
+        border: none;
+        border-radius: 8px;
+        font-size: 1rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .btn-primary {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        color: white;
+    }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(79, 172, 254, 0.4); }
+    .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+    .btn-danger {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ff5722 100%);
+        color: white;
+    }
+    .btn-danger:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(255, 107, 107, 0.4); }
+    
+    .spinner {
+        width: 20px;
+        height: 20px;
+        border: 2px solid transparent;
+        border-top: 2px solid white;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    
+    .result {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-top: 2rem;
+        border-left: 4px solid #4facfe;
+    }
+    .result h3 {
+        color: #495057;
+        margin-bottom: 1rem;
+    }
+    .result pre {
+        background: white;
+        padding: 1rem;
+        border-radius: 6px;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+    
+    .error {
+        background: #fff5f5;
+        border-left-color: #ff6b6b;
+    }
+    .error h3 { color: #e53e3e; }
+    
+    
+    @media (max-width: 768px) {
+        .container { margin: 0; border-radius: 0; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col s12">
+            <div class="card-panel center-align imageai-gradient white-text" style="margin-top: 2rem;">
+                <h3 style="margin-bottom: 0.5rem;">
+                    <span class="material-symbols-rounded large" style="vertical-align: middle; margin-right: 0.5rem;">visibility</span>
+                    Vision Chat
+                </h3>
+                <p style="opacity: 0.9; margin: 0;">Chat with vision-language models using images with drag & drop</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Vision Chat Content -->
+    <div class="content">
+        <div class="form-group">
+            <label for="model-select">Model</label>
+            <select id="model-select" class="form-control">
+                <option value="">Loading models...</option>
+            </select>
+        </div>
+        
+        <div class="upload-zone" id="vision-upload">
+            <div class="upload-text"><i class="fas fa-camera"></i> Drop an image here or click to select</div>
+            <div class="upload-hint">Supports JPG, PNG, WebP</div>
+            <input type="file" id="vision-file" accept="image/*" style="display: none;">
+        </div>
+        
+        <div class="form-group">
+            <label for="vision-prompt">Question/Prompt</label>
+            <textarea id="vision-prompt" class="form-control" placeholder="What is shown in the provided image?" rows="3">What is shown in the provided image?</textarea>
+        </div>
+        
+        <div class="form-group">
+            <label for="max-tokens">Max Tokens</label>
+            <input type="number" id="max-tokens" class="form-control" value="100" min="10" max="500">
+        </div>
+        
+        <button id="vision-submit" class="btn btn-primary" onclick="submitVisionChat()">
+            <span id="vision-spinner" class="spinner" style="display: none;"></span>
+            Analyze Image
+        </button>
+        
+        <div id="vision-result" style="display: none;"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Global state
+    let visionImage = null;
+    
+    // File upload handling
+    function setupUploadZone(zoneId, fileInputId, callback) {
+        const zone = document.getElementById(zoneId);
+        const fileInput = document.getElementById(fileInputId);
+        
+        zone.addEventListener('click', () => fileInput.click());
+        zone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            zone.classList.add('dragover');
+        });
+        zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+        zone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            zone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) handleFile(files[0], zone, callback);
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) handleFile(e.target.files[0], zone, callback);
+        });
+    }
+    
+    function handleFile(file, zone, callback) {
+        if (!file.type.startsWith('image/')) {
+            alert('Please select an image file.');
+            return;
+        }
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = document.createElement('img');
+            img.src = e.target.result;
+            zone.innerHTML = '';
+            zone.appendChild(img);
+            zone.classList.add('has-image');
+            callback(file, e.target.result);
+        };
+        reader.readAsDataURL(file);
+    }
+    
+    // Vision chat functionality
+    async function submitVisionChat() {
+        const prompt = document.getElementById('vision-prompt').value.trim();
+        const model = document.getElementById('model-select').value;
+        const maxTokens = parseInt(document.getElementById('max-tokens').value);
+        
+        if (!prompt) {
+            alert('Please enter a question or prompt.');
+            return;
+        }
+        
+        const submitBtn = document.getElementById('vision-submit');
+        const spinner = document.getElementById('vision-spinner');
+        const resultDiv = document.getElementById('vision-result');
+        
+        submitBtn.disabled = true;
+        spinner.style.display = 'inline-block';
+        
+        // Start timing
+        const startTime = performance.now();
+        
+        try {
+            const messages = [{ role: 'user', content: prompt }];
+            const payload = { model, messages, max_tokens: maxTokens };
+            
+            // Add image if provided
+            if (visionImage) {
+                const base64 = visionImage.split(',')[1]; // Remove data:image/xxx;base64, prefix
+                payload.images = [base64];
+            }
+            
+            const response = await fetch('/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            
+            const data = await response.json();
+            
+            // End timing
+            const endTime = performance.now();
+            const generationTime = (endTime - startTime) / 1000; // Convert to seconds
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${data.detail || 'Unknown error'}`);
+            }
+            
+            showResult('vision-result', {
+                model: data.model,
+                response: data.choices[0].message.content,
+                generationTime: generationTime
+            });
+            
+        } catch (error) {
+            showError('vision-result', error.message);
+        } finally {
+            submitBtn.disabled = false;
+            spinner.style.display = 'none';
+        }
+    }
+    
+    
+    function showResult(elementId, data) {
+        const resultDiv = document.getElementById(elementId);
+        resultDiv.className = 'result';
+        
+        let timeInfo = '';
+        if (data.generationTime !== undefined) {
+            timeInfo = `<p><strong>Generation Time:</strong> ${data.generationTime.toFixed(2)}s</p>`;
+        }
+        
+        resultDiv.innerHTML = `
+            <h3>✅ Result</h3>
+            <p><strong>Model:</strong> ${data.model}</p>
+            ${timeInfo}
+            <pre>${data.response}</pre>
+        `;
+        resultDiv.style.display = 'block';
+    }
+    
+    
+    function showError(elementId, message) {
+        const resultDiv = document.getElementById(elementId);
+        resultDiv.className = 'result error';
+        resultDiv.innerHTML = `
+            <h3>❌ Error</h3>
+            <pre>${message}</pre>
+        `;
+        resultDiv.style.display = 'block';
+    }
+    
+    
+    // Load available models
+    async function loadAvailableModels() {
+        try {
+            const response = await fetch('/v1/vision-models');
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            const modelSelect = document.getElementById('model-select');
+            
+            // Clear loading option
+            modelSelect.innerHTML = '';
+            
+            // Group models by backend
+            const onnxModels = data.data.filter(m => m.backend === 'ONNX');
+            const pytorchModels = data.data.filter(m => m.backend.includes('PyTorch'));
+            
+            // Add ONNX models first
+            if (onnxModels.length > 0) {
+                const onnxGroup = document.createElement('optgroup');
+                onnxGroup.label = 'ONNX Models (Optimized)';
+                
+                onnxModels.forEach((model, index) => {
+                    const option = document.createElement('option');
+                    option.value = model.id;
+                    option.textContent = `${model.name} (${model.description})`;
+                    
+                    // Select the first ONNX model by default
+                    if (index === 0) {
+                        option.selected = true;
+                    }
+                    
+                    onnxGroup.appendChild(option);
+                });
+                
+                modelSelect.appendChild(onnxGroup);
+            }
+            
+            // Add PyTorch models
+            if (pytorchModels.length > 0) {
+                const pytorchGroup = document.createElement('optgroup');
+                pytorchGroup.label = 'PyTorch Models (Experimental)';
+                
+                pytorchModels.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model.id;
+                    option.textContent = `${model.name} (${model.description})`;
+                    pytorchGroup.appendChild(option);
+                });
+                
+                modelSelect.appendChild(pytorchGroup);
+            }
+            
+            // If no models available, show message
+            if (data.data.length === 0) {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = 'No models available - check download management';
+                option.disabled = true;
+                option.selected = true;
+                modelSelect.appendChild(option);
+            }
+            
+        } catch (error) {
+            console.error('Error loading models:', error);
+            const modelSelect = document.getElementById('model-select');
+            modelSelect.innerHTML = '<option value="" disabled selected>Error loading models</option>';
+        }
+    }
+
+    // Initialize upload zones
+    document.addEventListener('DOMContentLoaded', () => {
+        // Load models first
+        loadAvailableModels();
+        
+        setupUploadZone('vision-upload', 'vision-file', (file, dataUrl) => {
+            visionImage = dataUrl;
+        });
+    });
+</script>
+{% endblock %}
