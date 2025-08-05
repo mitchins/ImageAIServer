@@ -9,9 +9,16 @@ torchvision>=0.15.0  # For vision processing
 transformers>=4.35.0
 accelerate>=0.24.0
 
+# Diffusion pipelines
+diffusers>=0.17.1
+safetensors>=0.3.1
+
 # Essential tokenization
 sentencepiece>=0.1.99
 protobuf>=3.20.0
+
+# Image handling
+Pillow>=9.0.0
 
 # Note: Both SmolVLM-256M and Granite Vision have GGUF versions available:
 # - ggml-org/SmolVLM-256M-Instruct-GGUF 

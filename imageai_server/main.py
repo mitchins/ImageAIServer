@@ -35,20 +35,20 @@ def register_routers():
                 # Import the router module using relative import
                 module_name = f".{app_path.name}.router"
                 module = importlib.import_module(module_name, package=__package__)
-                
+
                 if hasattr(module, 'router'):
                     router = module.router
                     service_name = app_path.name.replace('_', '-')
+                    # allow module to specify prefix/tag
+                    prefix = getattr(module, 'router_prefix', f"/{service_name}")
+                    tag    = getattr(module, 'router_tag', service_name)
+
+                    app.include_router(router, prefix=prefix, tags=[tag])
+                    print(f"✅ Registered {app_path.name} router at {prefix}")
                     
-                    # Register with service prefix
-                    app.include_router(router, prefix=f"/{service_name}", tags=[service_name])
-                    print(f"✅ Registered {service_name} router at /{service_name}")
-                    
-                    # Special case: multimodal chat also gets root-level OpenAI compatibility
                     if app_path.name == 'multimodal_chat':
                         app.include_router(router, tags=["openai-compatible"])
                         print(f"✅ Registered multimodal-chat router at root level for OpenAI compatibility")
-                        
             except Exception as e:
                 print(f"❌ Failed to register {app_path.name} router: {e}")
 
@@ -257,6 +257,7 @@ async def root():
             <div class="endpoint"><strong>POST</strong> /v1/chat/completions <span style="color: #666;">• Vision + text inference (ONNX)</span></div>
             <div class="endpoint"><strong>POST</strong> /chat-server/v1/chat/completions/torch <span style="color: #666;">• PyTorch models (optional)</span></div>
             <div class="endpoint"><strong>POST</strong> /v1/image/compare_faces <span style="color: #666;">• Face comparison</span></div>
+            <div class="endpoint"><strong>POST</strong> /v1/images/generations <span style="color: #666;">• Image generation</span></div>
             <div class="endpoint"><strong>GET</strong> /v1/backends <span style="color: #666;">• Backend availability status</span></div>
             <div class="endpoint"><strong>GET</strong> /v1/models <span style="color: #666;">• List available models</span></div>
             <div class="endpoint"><strong>GET</strong> /health <span style="color: #666;">• Server health check</span></div>
