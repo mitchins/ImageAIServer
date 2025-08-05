@@ -178,9 +178,9 @@ function renderMultiComponentModel(model) {
                         </div>
                     </div>
                     ${(isFullyDownloaded || isPartiallyDownloaded) ? `
-                        <div class="file-list" style="margin-top: 10px; padding-left: 40px;">
+                        <div class="file-list file-list-indented">
                             ${quantFiles.map(file => `
-                                <div class="file-item" style="font-size: 0.9em;">
+                                <div class="file-item file-item-small">
                                     <span class="${file.downloaded ? 'file-downloaded' : 'file-not-downloaded'}">
                                         <i class="material-icons tiny">${file.downloaded ? 'check_circle' : 'radio_button_unchecked'}</i>
                                         ${file.path.split('/').pop()}
@@ -241,9 +241,9 @@ function renderMultiComponentModel(model) {
                     </div>
                 </div>
                 ${(isFullyDownloaded || isPartiallyDownloaded) ? `
-                    <div class="file-list" style="margin-top: 10px; padding-left: 40px;">
+                    <div class="file-list file-list-indented">
                         ${model.files.map(file => `
-                            <div class="file-item" style="font-size: 0.9em;">
+                            <div class="file-item file-item-small">
                                 <span class="${file.downloaded ? 'file-downloaded' : 'file-not-downloaded'}">
                                     <i class="material-icons tiny">${file.downloaded ? 'check_circle' : 'radio_button_unchecked'}</i>
                                     ${file.path.split('/').pop()}
@@ -298,8 +298,8 @@ function renderSingleFileModel(model) {
             </div>
         </div>
         ${file.downloaded ? `
-            <div class="file-list" style="margin-top: 10px; padding-left: 40px;">
-                <div class="file-item" style="font-size: 0.9em;">
+            <div class="file-list file-list-indented">
+                <div class="file-item file-item-small">
                     <span class="file-downloaded">
                         <i class="material-icons tiny">check_circle</i>
                         ${file.path.split('/').pop()}
