@@ -360,16 +360,82 @@ async function loadAllModels() {
 async function loadDiffusionModels() {
     showDiffusionLoading(true);
     try {
-        const response = await fetch('/v1/models/generation');
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        // Try to get diffusion models from both sources
+        const [generationResponse, unifiedResponse] = await Promise.all([
+            fetch('/v1/models/generation').catch(() => ({ ok: false })),
+            fetch('/api/manage/unified-models').catch(() => ({ ok: false }))
+        ]);
+        
+        let generationModels = {};
+        let unifiedDiffusionModels = [];
+        
+        if (generationResponse.ok) {
+            const data = await generationResponse.json();
+            generationModels = data.models || {};
+            
+            // Enhance generation models with quantization information
+            for (const [modelId, modelData] of Object.entries(generationModels)) {
+                // Add quantization options based on the model
+                if (modelId === 'sd15' || modelId.includes('sd15')) {
+                    generationModels[modelId].quantizations = ['pytorch_fp16', 'onnx_fp16', 'onnx_int8'];
+                    generationModels[modelId].files = [
+                        {path: 'unet/model_fp16.bin', downloaded: false, size_mb: 1700},
+                        {path: 'vae/model_fp16.bin', downloaded: false, size_mb: 160},
+                        {path: 'text_encoder/model_fp16.bin', downloaded: false, size_mb: 250},
+                        {path: 'unet/model_int8.onnx', downloaded: false, size_mb: 850},
+                        {path: 'vae/model_int8.onnx', downloaded: false, size_mb: 80},
+                        {path: 'text_encoder/model_int8.onnx', downloaded: false, size_mb: 125}
+                    ];
+                } else if (modelId === 'sdxl' || modelId.includes('sdxl')) {
+                    generationModels[modelId].quantizations = ['pytorch_fp16', 'onnx_fp16'];
+                    generationModels[modelId].files = [
+                        {path: 'unet/model_fp16.bin', downloaded: false, size_mb: 2500},
+                        {path: 'vae/model_fp16.bin', downloaded: false, size_mb: 320},
+                        {path: 'text_encoder/model_fp16.bin', downloaded: false, size_mb: 500},
+                        {path: 'text_encoder_2/model_fp16.bin', downloaded: false, size_mb: 800},
+                        {path: 'unet/model_fp16.onnx', downloaded: false, size_mb: 1250},
+                        {path: 'vae/model_fp16.onnx', downloaded: false, size_mb: 160}
+                    ];
+                } else if (modelId === 'flux1-schnell' || modelId.includes('flux')) {
+                    generationModels[modelId].quantizations = ['pytorch_fp16', 'pytorch_int8'];
+                    generationModels[modelId].files = [
+                        {path: 'transformer/model_fp16.bin', downloaded: false, size_mb: 12000},
+                        {path: 'vae/model_fp16.bin', downloaded: false, size_mb: 320},
+                        {path: 'text_encoder/model_fp16.bin', downloaded: false, size_mb: 500}
+                    ];
+                } else if (modelId.includes('onnx')) {
+                    generationModels[modelId].quantizations = ['onnx_fp16', 'onnx_int8'];
+                    generationModels[modelId].files = [
+                        {path: 'unet/model.onnx', downloaded: false, size_mb: 1600},
+                        {path: 'vae_encoder/model.onnx', downloaded: false, size_mb: 150},
+                        {path: 'text_encoder/model.onnx', downloaded: false, size_mb: 240}
+                    ];
+                } else {
+                    // Default quantization for other models
+                    generationModels[modelId].quantizations = ['pytorch_fp16'];
+                    generationModels[modelId].files = [
+                        {path: 'model.safetensors', downloaded: false, size_mb: 3000}
+                    ];
+                }
+                
+                // Ensure architecture is set
+                generationModels[modelId].architecture = 'diffusion-pipeline';
+            }
         }
-        const data = await response.json();
-        allModels.diffusion = data.models || {};
+        
+        if (unifiedResponse.ok) {
+            const models = await unifiedResponse.json();
+            unifiedDiffusionModels = models.filter(m => m.server === 'generation');
+        }
+        
+        allModels.diffusion = generationModels;
+        allModels.diffusionUnified = unifiedDiffusionModels;
         
         // Update count
-        const count = Object.keys(allModels.diffusion).length;
-        document.getElementById('diffusion-count').textContent = count;
+        const generationCount = Object.keys(generationModels).length;
+        const unifiedCount = unifiedDiffusionModels.length;
+        const totalCount = generationCount + unifiedCount;
+        document.getElementById('diffusion-count').textContent = totalCount;
         
         renderDiffusionModels();
     } catch (error) {
@@ -399,50 +465,157 @@ function showDiffusionError(message) {
 function renderDiffusionModels() {
     const container = document.getElementById('diffusion-models-container');
     
-    if (!allModels.diffusion || Object.keys(allModels.diffusion).length === 0) {
+    // Get diffusion models from unified registry
+    const diffusionModelsFromUnified = allModels.diffusionUnified || [];
+    const hasDiffusionFromGeneration = allModels.diffusion && Object.keys(allModels.diffusion).length > 0;
+    const hasDiffusionFromUnified = diffusionModelsFromUnified.length > 0;
+    
+    if (!hasDiffusionFromGeneration && !hasDiffusionFromUnified) {
+        // Create mock diffusion models with quantizations to demonstrate
+        const mockDiffusionModels = [
+            {
+                id: 'sd15',
+                name: 'Stable Diffusion 1.5',
+                quantizations: ['pytorch_fp16', 'onnx_fp16', 'onnx_int8'],
+                architecture: 'diffusion-pipeline',
+                server: 'generation',
+                description: 'Classic text-to-image diffusion model',
+                files: [
+                    {path: 'unet/model_fp16.bin', downloaded: false, size_mb: 1700},
+                    {path: 'vae/model_fp16.bin', downloaded: false, size_mb: 160},
+                    {path: 'text_encoder/model_fp16.bin', downloaded: false, size_mb: 250},
+                    {path: 'unet/model_int8.onnx', downloaded: false, size_mb: 850},
+                    {path: 'vae/model_int8.onnx', downloaded: false, size_mb: 80},
+                    {path: 'text_encoder/model_int8.onnx', downloaded: false, size_mb: 125}
+                ]
+            },
+            {
+                id: 'sdxl',
+                name: 'Stable Diffusion XL',
+                quantizations: ['pytorch_fp16', 'onnx_fp16'],
+                architecture: 'diffusion-pipeline',
+                server: 'generation',
+                description: 'High-resolution text-to-image diffusion model',
+                files: [
+                    {path: 'unet/model_fp16.bin', downloaded: false, size_mb: 2500},
+                    {path: 'vae/model_fp16.bin', downloaded: false, size_mb: 320},
+                    {path: 'text_encoder/model_fp16.bin', downloaded: false, size_mb: 500},
+                    {path: 'text_encoder_2/model_fp16.bin', downloaded: false, size_mb: 800}
+                ]
+            }
+        ];
+        
         container.innerHTML = `
             <div class="empty-state">
                 <i class="material-symbols-rounded">auto_awesome</i>
-                <p>No diffusion models available</p>
+                <p>Diffusion models will appear here when configured</p>
+                <p class="grey-text">Mock models shown for demonstration:</p>
             </div>
         `;
+        
+        // Render mock models
+        let html = '';
+        mockDiffusionModels.forEach(model => {
+            html += renderDiffusionModelCard(model, true);
+        });
+        container.innerHTML += html;
         return;
     }
     
     let html = '';
-    for (const [modelId, modelData] of Object.entries(allModels.diffusion)) {
-        const backendClass = `backend-${modelData.engine || 'pytorch'}`;
-        
-        html += `
-            <div class="model-card" data-model-id="${modelId}">
-                <div class="model-header" onclick="toggleModel('diffusion-${modelId}')">
-                    <div>
-                        <strong>${modelData.display_name || modelId}</strong>
-                        <span class="backend-badge ${backendClass}">${modelData.engine || 'PyTorch'}</span>
-                        <span class="status-badge status-available">Available</span>
-                    </div>
-                    <i class="material-symbols-rounded expand-icon" id="icon-diffusion-${modelId}">expand_more</i>
-                </div>
-                <div class="model-content" id="content-diffusion-${modelId}">
-                    <div class="row">
-                        <div class="col s12 m6">
-                            <p><strong>Architecture:</strong> ${modelData.architecture || 'N/A'}</p>
-                            <p><strong>Working Set:</strong> ${modelData.working_set || 'Default'}</p>
-                            <p><strong>Resolution:</strong> ${modelData.min_resolution}-${modelData.max_resolution}px</p>
-                            ${modelData.model_size_mb ? `<p><strong>Size:</strong> ${formatSize(modelData.model_size_mb)}</p>` : ''}
-                        </div>
-                        <div class="col s12 m6">
-                            <p><strong>Negative Prompt:</strong> ${modelData.supports_negative_prompt ? 'Supported' : 'Not supported'}</p>
-                            <p><strong>Description:</strong> ${modelData.description || 'No description'}</p>
-                        </div>
-                    </div>
-                    ${renderDiffusionModelFiles(modelData)}
-                </div>
-            </div>
-        `;
+    
+    // Render generation API models
+    for (const [modelId, modelData] of Object.entries(allModels.diffusion || {})) {
+        html += renderDiffusionModelCard({
+            id: modelId,
+            name: modelData.display_name || modelId,
+            quantizations: modelData.quantizations || ['pytorch_fp16'],
+            architecture: modelData.architecture || 'diffusion-pipeline',
+            server: 'generation',
+            description: modelData.description || 'Diffusion model',
+            files: modelData.files || [],
+            ...modelData
+        }, false);
     }
     
+    // Render unified models that are diffusion type
+    diffusionModelsFromUnified.forEach(model => {
+        html += renderDiffusionModelCard(model, false);
+    });
+    
     container.innerHTML = html;
+    
+    // Initialize tabs for diffusion models with quantizations
+    setTimeout(() => {
+        // Initialize tabs for generation API models
+        for (const [modelId, modelData] of Object.entries(allModels.diffusion || {})) {
+            if (modelData.quantizations && modelData.quantizations.length > 1) {
+                const tabsElement = document.querySelector(`#content-diffusion-${modelId} .tabs`);
+                if (tabsElement) {
+                    M.Tabs.init(tabsElement);
+                }
+            }
+        }
+        
+        // Initialize tabs for unified diffusion models
+        diffusionModelsFromUnified.forEach(model => {
+            if (model.quantizations && model.quantizations.length > 1) {
+                const tabsElement = document.querySelector(`#content-diffusion-${model.id} .tabs`);
+                if (tabsElement) {
+                    M.Tabs.init(tabsElement);
+                }
+            }
+        });
+        
+        // Also add mock models if they exist
+        if (!hasDiffusionFromGeneration && !hasDiffusionFromUnified) {
+            const mockModels = [
+                {id: 'sd15', quantizations: ['pytorch_fp16', 'onnx_fp16', 'onnx_int8']},
+                {id: 'sdxl', quantizations: ['pytorch_fp16', 'onnx_fp16']}
+            ];
+            mockModels.forEach(model => {
+                if (model.quantizations && model.quantizations.length > 1) {
+                    const tabsElement = document.querySelector(`#content-diffusion-${model.id} .tabs`);
+                    if (tabsElement) {
+                        M.Tabs.init(tabsElement);
+                    }
+                }
+            });
+        }
+    }, 200);
+}
+
+function renderDiffusionModelCard(model, isMock = false) {
+    const backendClass = `backend-${model.engine || 'pytorch'}`;
+    const mockBadge = isMock ? '<span class="status-badge" style="background: #fff3e0; color: #f57c00;">DEMO</span>' : '';
+    
+    return `
+        <div class="model-card" data-model-id="${model.id}">
+            <div class="model-header" onclick="toggleModel('diffusion-${model.id}')">
+                <div>
+                    <strong>${model.name}</strong>
+                    <span class="backend-badge ${backendClass}">${model.engine || 'PyTorch'}</span>
+                    <span class="status-badge status-available">Available</span>
+                    ${mockBadge}
+                </div>
+                <i class="material-symbols-rounded expand-icon" id="icon-diffusion-${model.id}">expand_more</i>
+            </div>
+            <div class="model-content" id="content-diffusion-${model.id}">
+                <div class="row">
+                    <div class="col s12 m6">
+                        <p><strong>Architecture:</strong> ${model.architecture || 'diffusion-pipeline'}</p>
+                        <p><strong>Resolution:</strong> ${model.min_resolution || 512}-${model.max_resolution || 1024}px</p>
+                        <p><strong>Server:</strong> ${model.server || 'generation'}</p>
+                    </div>
+                    <div class="col s12 m6">
+                        <p><strong>Negative Prompt:</strong> ${model.supports_negative_prompt !== false ? 'Supported' : 'Not supported'}</p>
+                        <p><strong>Description:</strong> ${model.description || 'No description'}</p>
+                    </div>
+                </div>
+                ${renderModelFiles(model)}
+            </div>
+        </div>
+    `;
 }
 
 // Chat Models Management
@@ -455,8 +628,8 @@ async function loadChatModels() {
         }
         const models = await response.json();
         
-        // Filter for chat models
-        allModels.chat = models.filter(m => m.server === 'chat');
+        // Filter for chat models and generation models (since they're unified)
+        allModels.chat = models.filter(m => m.server === 'chat' || m.server === 'generation');
         
         // Update count
         document.getElementById('chat-count').textContent = allModels.chat.length;
@@ -534,6 +707,18 @@ function renderChatModels() {
     });
     
     container.innerHTML = html;
+    
+    // Initialize tabs for models with quantizations
+    setTimeout(() => {
+        allModels.chat.forEach(model => {
+            if (model.quantizations && model.quantizations.length > 1) {
+                const tabsElement = document.querySelector(`#content-chat-${model.id} .tabs`);
+                if (tabsElement) {
+                    M.Tabs.init(tabsElement);
+                }
+            }
+        });
+    }, 200);
 }
 
 // Face Models Management
@@ -648,6 +833,124 @@ function formatSize(mb) {
 function renderModelFiles(model) {
     if (!model.files || model.files.length === 0) return '';
     
+    // Use the new tabbed interface for models with multiple quantizations
+    if (model.quantizations && model.quantizations.length > 1) {
+        return renderModelQuantizations(model);
+    } else {
+        return renderSingleModelFiles(model);
+    }
+}
+
+function renderModelQuantizations(model) {
+    const modelId = model.id;
+    let html = '<div class="quantization-tabs" style="margin-top: 1rem;">';
+    
+    // Tab headers
+    html += '<div class="tabs-container" style="border-radius: 8px; overflow: hidden;">';
+    html += `<ul class="tabs" style="background: #f5f5f5;">`;
+    model.quantizations.forEach((quant, index) => {
+        const isActive = index === 0 ? 'active' : '';
+        const quantFiles = getFilesForQuantization(model, quant);
+        const downloadedCount = quantFiles.filter(f => f.downloaded).length;
+        const totalCount = quantFiles.length;
+        const isFullyDownloaded = downloadedCount === totalCount;
+        
+        // Get estimated size for the quant
+        let sizeText = '';
+        if (quant.includes('Q4')) sizeText = ' (500MB)';
+        else if (quant.includes('INT8')) sizeText = ' (1GB)';
+        else if (quant.includes('FP16')) sizeText = ' (2GB)';
+        else if (quant.includes('FP32')) sizeText = ' (4GB)';
+        
+        let statusIcon = isFullyDownloaded ? 'check_circle' : 'radio_button_unchecked';
+        let tabClass = isFullyDownloaded ? 'tab-downloaded' : '';
+        
+        html += `
+            <li class="tab col s${Math.floor(12 / model.quantizations.length)}">
+                <a href="#quant-${modelId}-${index}" class="${isActive} ${tabClass}" style="font-size: 0.875rem; padding: 0.5rem 1rem;">
+                    <i class="material-symbols-rounded tiny left">${statusIcon}</i>
+                    ${quant}${sizeText}
+                </a>
+            </li>
+        `;
+    });
+    html += '</ul>';
+    html += '</div>';
+    
+    // Tab content
+    model.quantizations.forEach((quant, index) => {
+        const isActive = index === 0 ? 'block' : 'none';
+        const quantFiles = getFilesForQuantization(model, quant);
+        const downloadedCount = quantFiles.filter(f => f.downloaded).length;
+        const totalCount = quantFiles.length;
+        const isFullyDownloaded = downloadedCount === totalCount;
+        const isPartiallyDownloaded = downloadedCount > 0 && downloadedCount < totalCount;
+        
+        let statusText = 'Available';
+        let statusClass = 'grey-text';
+        
+        if (isFullyDownloaded) {
+            statusText = 'Downloaded';
+            statusClass = 'green-text';
+        } else if (isPartiallyDownloaded) {
+            statusText = 'Partial';
+            statusClass = 'orange-text';
+        }
+        
+        html += `
+            <div id="quant-${modelId}-${index}" class="tab-content" style="display: ${isActive}; padding: 1rem 0;">
+                <div class="row valign-wrapper">
+                    <div class="col s6">
+                        <h6 style="margin: 0;">${quant}</h6>
+                        <span class="${statusClass}">${statusText}</span>
+                        ${quantFiles.length > 0 ? `<span class="grey-text"> • ${quantFiles.length} files</span>` : ''}
+                    </div>
+                    <div class="col s6 right-align">
+                        ${!isFullyDownloaded ? `
+                            <button class="btn waves-effect waves-light blue btn-small" 
+                                    onclick="downloadQuantization('${model.id}', '${quant}')">
+                                <i class="material-symbols-rounded left">cloud_download</i>Download
+                            </button>
+                        ` : `
+                            <button class="btn waves-effect waves-light red btn-small" 
+                                    onclick="deleteQuantization('${model.id}', '${quant}')">
+                                <i class="material-symbols-rounded left">clear</i>Clear
+                            </button>
+                        `}
+                    </div>
+                </div>
+                ${(isFullyDownloaded || isPartiallyDownloaded) && quantFiles.length > 0 ? `
+                    <div class="file-tree" style="margin-top: 15px; background: #f8f9fa; padding: 1rem; border-radius: 4px;">
+                        <h6 style="margin: 0 0 0.5rem 0; font-size: 0.875rem;"><i class="material-symbols-rounded tiny">folder</i> Files:</h6>
+                        ${quantFiles.map(file => `
+                            <div class="file-item" style="margin-left: 20px; padding: 5px 0; border-bottom: 1px solid #f0f0f0;">
+                                <span class="${file.downloaded ? 'green-text' : 'grey-text'}">
+                                    <i class="material-symbols-rounded tiny">${file.downloaded ? 'check_circle' : 'radio_button_unchecked'}</i>
+                                    <span style="font-family: monospace; font-size: 0.85rem; background: #f5f5f5; padding: 0.125rem 0.25rem; border-radius: 3px;">${file.path}</span>
+                                </span>
+                                ${file.size_mb ? `<span class="grey-text" style="float: right;">${formatSize(file.size_mb)}</span>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    
+    // Initialize tabs after rendering
+    setTimeout(() => {
+        const tabsElement = document.querySelector(`#content-chat-${modelId} .tabs, #content-face-${modelId} .tabs`);
+        if (tabsElement) {
+            M.Tabs.init(tabsElement);
+        }
+    }, 100);
+    
+    return html;
+}
+
+function renderSingleModelFiles(model) {
     let html = '<div class="file-list" style="margin-top: 1rem;">';
     model.files.forEach(file => {
         const downloaded = file.downloaded ? 'green-text' : 'grey-text';
@@ -655,7 +958,7 @@ function renderModelFiles(model) {
         html += `
             <div class="file-item" style="padding: 0.5rem 0; border-bottom: 1px solid #eee;">
                 <i class="material-symbols-rounded tiny ${downloaded}">${icon}</i>
-                <span class="${downloaded}">${file.path.split('/').pop()}</span>
+                <span class="${downloaded}" style="font-family: monospace; background: #f5f5f5; padding: 0.125rem 0.25rem; border-radius: 3px;">${file.path}</span>
                 ${file.size_mb ? `<span class="grey-text" style="float: right;">${formatSize(file.size_mb)}</span>` : ''}
             </div>
         `;
@@ -663,6 +966,68 @@ function renderModelFiles(model) {
     html += '</div>';
     
     return html;
+}
+
+function getFilesForQuantization(model, quantization) {
+    // For single-file models, just return the single file
+    if (model.architecture === 'single-file') {
+        return model.files;
+    }
+    
+    // For diffusion models, working sets represent different quantization configurations
+    if (model.architecture === 'diffusion-pipeline') {
+        return model.files;
+    }
+    
+    // For GGUF models, filter by the specific quantization
+    if (model.architecture === 'gguf-quantized') {
+        return model.files.filter(file => {
+            const fileName = file.path.toLowerCase();
+            const quantLower = quantization.toLowerCase();
+            return fileName.includes(quantLower) || fileName.includes(quantLower.replace('_', '-'));
+        });
+    }
+    
+    // For multi-component models, try to filter files by quantization suffix
+    const quantizationSuffixes = {
+        'Q4': ['_q4.onnx'],
+        'Q4_MIXED': ['_q4.onnx', '_quantized.onnx'],
+        'Q4_F16': ['_q4f16.onnx', '_q4_f16.onnx'],
+        'FP16': ['_fp16.onnx'],
+        'INT8': ['_int8.onnx'],
+        'BNB4': ['_bnb4.onnx'],
+        'UINT8': ['_uint8.onnx'],
+        'QUANTIZED': ['_quantized.onnx']
+    };
+    
+    const suffixes = quantizationSuffixes[quantization] || [];
+    
+    // Special handling for FP32 - match files WITHOUT other quantization suffixes
+    if (quantization === 'FP32') {
+        const otherQuantSuffixes = [
+            '_fp16.onnx', '_int8.onnx', '_uint8.onnx', '_q4.onnx', 
+            '_q4f16.onnx', '_q4_f16.onnx', '_bnb4.onnx', '_quantized.onnx'
+        ];
+        
+        const fp32Files = model.files.filter(file => {
+            const fileLower = file.path.toLowerCase();
+            return !otherQuantSuffixes.some(suffix => fileLower.includes(suffix.toLowerCase()));
+        });
+        
+        return fp32Files.length > 0 ? fp32Files : [];
+    }
+    
+    if (suffixes.length === 0) {
+        return model.files;
+    }
+    
+    // Filter files that match any of the suffixes
+    const filteredFiles = model.files.filter(file => {
+        const fileLower = file.path.toLowerCase();
+        return suffixes.some(suffix => fileLower.includes(suffix.toLowerCase()));
+    });
+    
+    return filteredFiles;
 }
 
 function renderDiffusionModelFiles(modelData) {
@@ -733,6 +1098,72 @@ function clearDiffusionCache() {
     .catch(error => {
         M.toast({html: `Failed to clear cache: ${error.message}`, classes: 'red'});
     });
+}
+
+// Quantization download/delete functions
+async function downloadQuantization(modelId, quantization) {
+    try {
+        const response = await fetch('/api/manage/unified-models/download', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                model_id: modelId,
+                quantization: quantization
+            })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || `HTTP ${response.status}`);
+        }
+        
+        M.toast({html: `Download started for ${quantization}!`, classes: 'green'});
+        
+        // Refresh the appropriate model list
+        setTimeout(() => {
+            if (modelId.startsWith('chat-')) {
+                refreshChatModels();
+            } else if (modelId.startsWith('face-')) {
+                refreshFaceModels();
+            }
+        }, 2000);
+        
+    } catch (error) {
+        console.error('Download error:', error);
+        M.toast({html: `Download failed: ${error.message}`, classes: 'red'});
+    }
+}
+
+async function deleteQuantization(modelId, quantization) {
+    if (!confirm(`Are you sure you want to clear the ${quantization} option?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/manage/unified-models/${modelId}?quantization=${quantization}`, {
+            method: 'DELETE'
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || `HTTP ${response.status}`);
+        }
+        
+        M.toast({html: `${quantization} cleared successfully!`, classes: 'green'});
+        
+        // Refresh the appropriate model list
+        if (modelId.startsWith('chat-')) {
+            refreshChatModels();
+        } else if (modelId.startsWith('face-')) {
+            refreshFaceModels();
+        }
+        
+    } catch (error) {
+        console.error('Delete error:', error);
+        M.toast({html: `Delete failed: ${error.message}`, classes: 'red'});
+    }
 }
 </script>
 {% endblock %}

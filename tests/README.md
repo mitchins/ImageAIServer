@@ -81,6 +81,16 @@ python tests/test_face_pipeline.py --integration-only --verbose
     - CLIP embedding generation
     - Model loader functionality
     - Error handling
+  - **Unified model registry** (`test_unified_model_registry.py`)
+    - Model discovery across servers
+    - Quantization handling and filtering
+    - Download status management
+    - File association logic
+  - **Diffusion model registry** (`test_diffusion_model_registry.py`)
+    - Working set validation
+    - Optimal configuration suggestion
+    - Component specification handling
+    - Backend and quantization compatibility
 
 ### Integration Tests (`tests/integration/`)
 - **Purpose**: Test actual model inference end-to-end

@@ -9,7 +9,11 @@ from ..shared.diffusion_model_loader import diffusion_loader
 
 try:
     import onnxruntime as ort
-    from diffusers import OnnxStableDiffusionPipeline
+    try:
+        from optimum.onnxruntime import ORTStableDiffusionPipeline
+        OnnxStableDiffusionPipeline = ORTStableDiffusionPipeline
+    except ImportError:
+        from diffusers import OnnxStableDiffusionPipeline
     ONNX_AVAILABLE = True
 except ImportError:
     ort = None
@@ -37,8 +41,8 @@ def choose_onnx_providers():
 
 router = APIRouter()
 
-# Module-level variables for auto-registration - OpenAI-compatible under /v1
-router_prefix = "/v1"
+# override auto-registration prefix so decorator path stands alone
+router_prefix = ""
 router_tag = "generation"
 
 # Lazy-loaded pipelines
@@ -108,10 +112,11 @@ def get_sd15_onnx():
                 status_code=503,
                 detail="ONNX is not available. Install onnxruntime to use ONNX models."
             )
-        providers = choose_onnx_providers()
+        # ORTStableDiffusionPipeline expects a single provider string
+        provider = "CUDAExecutionProvider" if torch.cuda.is_available() else "CPUExecutionProvider"
         _sd15_onnx = OnnxStableDiffusionPipeline.from_pretrained(
-            "tlwu/stable-diffusion-v1-5-onnxruntime",
-            provider=providers
+            "Mitchins/sd15-onnx-int8",
+            provider=provider
         )
     return _sd15_onnx
 
@@ -123,6 +128,7 @@ class ImageGenRequest(BaseModel):
     width: Optional[int]
     height: Optional[int]
     negative_prompt: Optional[str] = ""
+    working_set: Optional[str] = None  # For diffusion models with multiple working sets
 
 class ImageData(BaseModel):
     b64_json: str
@@ -190,7 +196,11 @@ MODEL_METADATA = {
         "supports_negative_prompt": True,
         "max_resolution": 1024,
         "default_resolution": 1024,
-        "min_resolution": 512
+        "min_resolution": 512,
+        "display_name": "Stable Diffusion XL",
+        "description": "Full precision SDXL model",
+        "memory_requirement": "~8GB VRAM",
+        "quantization": "FP16"
     },
     "flux1-schnell": {
         "engine": "pytorch", 
@@ -211,14 +221,22 @@ MODEL_METADATA = {
         "supports_negative_prompt": True,
         "max_resolution": 1024,
         "default_resolution": 1024,
-        "min_resolution": 512
+        "min_resolution": 512,
+        "display_name": "Stable Diffusion XL Turbo",
+        "description": "Fast SDXL variant, fewer steps needed",
+        "memory_requirement": "~8GB VRAM",
+        "quantization": "FP16"
     },
     "sd15-onnx": {
         "engine": "onnx",
         "supports_negative_prompt": True,
         "max_resolution": 768,
         "default_resolution": 512,
-        "min_resolution": 256
+        "min_resolution": 256,
+        "display_name": "Stable Diffusion 1.5 (ONNX INT8)",
+        "description": "Quantized INT8 model optimized for CPU/low memory (~500MB)",
+        "memory_requirement": "~500MB",
+        "quantization": "INT8"
     }
 }
 
@@ -231,7 +249,7 @@ PIPE_REGISTRY = {
     **({'sd15-onnx': (get_sd15_onnx, _gen_sd15_onnx)} if ONNX_AVAILABLE else {})
 }
 
-@router.get("/models/generation")
+@router.get("/v1/models/generation")
 def get_generation_models():
     """Get available generation models and their metadata."""
     # Get models from both the new diffusion loader and legacy registry
@@ -248,7 +266,7 @@ def get_generation_models():
     
     return {"models": available_models}
 
-@router.get("/models/generation/loaded")
+@router.get("/v1/models/generation/loaded")
 def get_loaded_models():
     """Get information about currently loaded models."""
     return {
@@ -256,7 +274,7 @@ def get_loaded_models():
         "legacy_models": list(PIPE_REGISTRY.keys())
     }
 
-@router.post("/models/generation/unload")
+@router.post("/v1/models/generation/unload")
 def unload_pipeline(request: dict):
     """Unload a specific pipeline to free memory."""
     model_id = request.get("model_id")
@@ -271,7 +289,7 @@ def unload_pipeline(request: dict):
     except Exception as e:
         raise HTTPException(500, f"Failed to unload pipeline: {str(e)}")
 
-@router.post("/models/generation/clear-cache")
+@router.post("/v1/models/generation/clear-cache")
 def clear_cache():
     """Clear all loaded pipelines to free memory."""
     try:
@@ -280,8 +298,11 @@ def clear_cache():
     except Exception as e:
         raise HTTPException(500, f"Failed to clear cache: {str(e)}")
 
-@router.post("/images/generations", response_model=ImageGenResponse)
+@router.post("/v1/images/generations", response_model=ImageGenResponse)
 def generate(req: ImageGenRequest):
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"🎨 Generation request received: model={req.model}, working_set={req.working_set}")
     key = req.model.lower()
     
     # Try new diffusion system first
@@ -334,6 +355,10 @@ def generate(req: ImageGenRequest):
 
 def _generate_with_diffusion_system(req: ImageGenRequest, model_key: str) -> ImageGenResponse:
     """Generate using the new diffusion model system."""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"🔧 Using diffusion system for {model_key}")
+    
     # Check if model exists in diffusion system
     diffusion_models = diffusion_loader.get_available_models()
     if model_key not in diffusion_models:
@@ -350,10 +375,13 @@ def _generate_with_diffusion_system(req: ImageGenRequest, model_key: str) -> Ima
     if width < model_metadata["min_resolution"] or height < model_metadata["min_resolution"]:
         raise HTTPException(400, f"Resolution too low for {req.model}. Min: {model_metadata['min_resolution']}x{model_metadata['min_resolution']}")
     
-    # Load pipeline
+    # Load pipeline with optional working set
     try:
-        pipeline, metadata = diffusion_loader.load_pipeline(model_key)
+        logger.info(f"📥 Loading pipeline {model_key} with working_set={req.working_set}")
+        pipeline, metadata = diffusion_loader.load_pipeline(model_key, req.working_set)
+        logger.info(f"✅ Pipeline loaded successfully")
     except Exception as e:
+        logger.error(f"❌ Failed to load pipeline: {str(e)}")
         raise HTTPException(500, f"Failed to load model {model_key}: {str(e)}")
     
     # Generate images

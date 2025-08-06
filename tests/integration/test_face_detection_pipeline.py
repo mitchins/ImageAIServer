@@ -25,10 +25,11 @@ class TestFaceDetectionPipeline:
         cls.model_loader = ModelLoader()
         
         # Load test images
-        cls.real_face_a_path = cls.test_data_dir / "face-a.png"
-        cls.real_face_b_path = cls.test_data_dir / "face-b.png"
-        cls.anime_face_a_path = cls.test_data_dir / "anime-face-a.png"
-        cls.anime_face_b_path = cls.test_data_dir / "anime-face-b.png"
+        cls.fixtures_dir = Path(__file__).parent.parent / "fixtures"
+        cls.real_face_a_path = cls.fixtures_dir / "face-a.png"
+        cls.real_face_b_path = cls.fixtures_dir / "face-b.png"
+        cls.anime_face_a_path = cls.fixtures_dir / "anime-face-a.png"
+        cls.anime_face_b_path = cls.fixtures_dir / "anime-face-b.png"
         
         # Check if test images exist
         cls.has_real_faces = cls.real_face_a_path.exists() and cls.real_face_b_path.exists()
@@ -66,7 +67,7 @@ class TestFaceDetectionPipeline:
         config = load_config([])
         assert config is not None
         assert hasattr(config, 'detector_model')
-        assert hasattr(config, 'embedder_repo')
+        assert hasattr(config, 'embedder_model_path')
     
     def test_face_embedding_extraction_photo_mode(self):
         """Test face embedding extraction in photo mode."""
@@ -89,7 +90,7 @@ class TestFaceDetectionPipeline:
             norm = np.linalg.norm(embedding)
             assert abs(norm - 1.0) < 1e-5  # Should be unit normalized
     
-    @pytest.mark.skipif(not Path(__file__).parent.parent.parent.joinpath("anime-face-a.png").exists(), 
+    @pytest.mark.skipif(not Path(__file__).parent.parent.joinpath("fixtures/anime-face-a.png").exists(), 
                        reason="Anime face test images not available")
     def test_face_embedding_extraction_anime_mode(self):
         """Test face embedding extraction in anime mode."""
@@ -122,8 +123,8 @@ class TestFaceDetectionPipeline:
             similarity = np.dot(embedding1, embedding2)
             assert similarity > 0.99, f"Same image should produce consistent embeddings, got similarity: {similarity}"
     
-    @pytest.mark.skipif(not (Path(__file__).parent.parent.parent.joinpath("face-a.png").exists() and 
-                           Path(__file__).parent.parent.parent.joinpath("face-b.png").exists()), 
+    @pytest.mark.skipif(not (Path(__file__).parent.parent.joinpath("fixtures/face-a.png").exists() and 
+                           Path(__file__).parent.parent.joinpath("fixtures/face-b.png").exists()), 
                        reason="Real face test images not available")
     def test_real_face_comparison(self):
         """Test comparing two different real faces."""
@@ -144,8 +145,8 @@ class TestFaceDetectionPipeline:
         assert 0.0 <= similarity <= 1.0, f"Similarity should be between 0 and 1, got: {similarity}"
         print(f"Real face comparison similarity: {similarity:.4f}")
     
-    @pytest.mark.skipif(not (Path(__file__).parent.parent.parent.joinpath("anime-face-a.png").exists() and 
-                           Path(__file__).parent.parent.parent.joinpath("anime-face-b.png").exists()), 
+    @pytest.mark.skipif(not (Path(__file__).parent.parent.joinpath("fixtures/anime-face-a.png").exists() and 
+                           Path(__file__).parent.parent.joinpath("fixtures/anime-face-b.png").exists()), 
                        reason="Anime face test images not available")
     def test_anime_face_comparison(self):
         """Test comparing two anime faces."""

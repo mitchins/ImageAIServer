@@ -23,13 +23,14 @@ class UnifiedModel:
     """Represents a complete model (single file or multi-component configuration)."""
     id: str
     name: str
-    server: Literal["chat", "face"]
-    architecture: Literal["single-file", "multi-component"]
+    server: Literal["chat", "face", "generation"]
+    architecture: Literal["single-file", "multi-component", "gguf-quantized", "diffusion-pipeline"]
     description: str
     files: List[ModelFile] = field(default_factory=list)
     quantizations: List[str] = field(default_factory=list)
     status: Literal["not-downloaded", "partial", "downloaded", "error"] = "not-downloaded"
     total_size_mb: float = 0.0
+    working_sets: List[str] = field(default_factory=list)  # For diffusion models
 
 
 class UnifiedModelRegistry:
@@ -44,6 +45,7 @@ class UnifiedModelRegistry:
         self._discover_chat_models()
         self._discover_gguf_models()
         self._discover_face_models()
+        self._discover_diffusion_models()
     
     def _discover_chat_models(self):
         """Discover curated chat models from model_types.py."""
@@ -305,6 +307,10 @@ class UnifiedModelRegistry:
         if model.architecture == "single-file":
             return model.files
         
+        # For diffusion models, all files are potentially used by all working sets
+        if model.architecture == "diffusion-pipeline":
+            return model.files
+        
         # For multi-component models, filter by quantization suffix
         quantization_patterns = {
             'Q4': ['_q4'],
@@ -352,7 +358,7 @@ class UnifiedModelRegistry:
         """Get a specific model by ID."""
         return self.models.get(model_id)
     
-    def get_models_by_server(self, server: Literal["chat", "face"]) -> List[UnifiedModel]:
+    def get_models_by_server(self, server: Literal["chat", "face", "generation"]) -> List[UnifiedModel]:
         """Get all models for a specific server."""
         return [model for model in self.models.values() if model.server == server]
     
@@ -483,6 +489,53 @@ class UnifiedModelRegistry:
                     for file in model.files:
                         file.downloaded = False
                         file.size_mb = None
+    
+    def _discover_diffusion_models(self):
+        """Discover diffusion models from diffusion_model_registry."""
+        try:
+            from .diffusion_model_registry import diffusion_registry
+            
+            for model_def in diffusion_registry.get_available_models().values():
+                model_id = f"diffusion-{model_def.model_id}"
+                
+                # Get all working sets as quantization options
+                working_set_names = [ws.name for ws in model_def.working_sets]
+                
+                # Create base model entry
+                self.models[model_id] = UnifiedModel(
+                    id=model_id,
+                    name=model_def.display_name,
+                    server="generation",
+                    architecture="diffusion-pipeline",
+                    description=model_def.base_repo,
+                    quantizations=working_set_names,
+                    working_sets=working_set_names,
+                    files=[]
+                )
+                
+                # Add files for each working set
+                model = self.models[model_id]
+                for ws in model_def.working_sets:
+                    for component, spec in ws.components.items():
+                        file_path = spec.filename or (f"{spec.subfolder}/pytorch_model.bin" if spec.subfolder else "pytorch_model.bin")
+                        model_file = ModelFile(
+                            path=file_path,
+                            repo_id=spec.repo_id
+                        )
+                        # Avoid duplicates
+                        if not any(f.path == file_path and f.repo_id == spec.repo_id for f in model.files):
+                            model.files.append(model_file)
+                            
+        except ImportError as e:
+            # If diffusion registry is not available, skip
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Diffusion model registry not available: {e}")
+        except Exception as e:
+            # Log any other errors
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error discovering diffusion models: {e}")
 
 
 # Global registry instance

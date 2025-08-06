@@ -201,13 +201,13 @@ loadAvailableModels();
     let isGenerating = false;
     let modelMetadata = {};
     
-    // Model display names
+    // Model display names (fallback if not provided by backend)
     const MODEL_NAMES = {
         'flux1-schnell': 'FLUX.1 Schnell (Fast)',
         'sdxl': 'Stable Diffusion XL',
         'sdxl-turbo': 'SDXL Turbo (Very Fast)', 
         'qwen-image': 'Qwen Image',
-        'sd15-onnx': 'Stable Diffusion 1.5 (ONNX)'
+        'sd15-onnx': 'Stable Diffusion 1.5 (ONNX INT8)'
     };
     
     async function loadAvailableModels() {
@@ -238,7 +238,15 @@ loadAvailableModels();
                 pytorchModels.forEach(key => {
                     const option = document.createElement('option');
                     option.value = key;
-                    option.textContent = MODEL_NAMES[key] || key;
+                    const metadata = modelMetadata[key];
+                    let displayText = metadata?.display_name || MODEL_NAMES[key] || key;
+                    if (metadata?.memory_requirement) {
+                        displayText += ` (${metadata.memory_requirement})`;
+                    }
+                    option.textContent = displayText;
+                    if (metadata?.description) {
+                        option.title = metadata.description;
+                    }
                     if (key === 'flux1-schnell') option.selected = true; // Default
                     pytorchGroup.appendChild(option);
                 });
@@ -252,7 +260,15 @@ loadAvailableModels();
                 onnxModels.forEach(key => {
                     const option = document.createElement('option');
                     option.value = key;
-                    option.textContent = MODEL_NAMES[key] || key;
+                    const metadata = modelMetadata[key];
+                    let displayText = metadata?.display_name || MODEL_NAMES[key] || key;
+                    if (metadata?.memory_requirement) {
+                        displayText += ` (${metadata.memory_requirement})`;
+                    }
+                    option.textContent = displayText;
+                    if (metadata?.description) {
+                        option.title = metadata.description;
+                    }
                     // Select ONNX as default if no PyTorch models available
                     if (pytorchModels.length === 0 && key === 'sd15-onnx') {
                         option.selected = true;

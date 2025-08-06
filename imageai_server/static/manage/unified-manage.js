@@ -108,8 +108,10 @@ function renderModel(model) {
                 <p class="grey-text">${model.description}</p>
     `;
     
-    if (model.architecture === 'multi-component') {
+    if (model.architecture === 'multi-component' || model.architecture === 'diffusion-pipeline') {
         html += renderMultiComponentModel(model);
+    } else if (model.architecture === 'gguf-quantized') {
+        html += renderGGUFQuantizedModel(model);
     } else {
         html += renderSingleFileModel(model);
     }
@@ -123,100 +125,142 @@ function renderModel(model) {
 }
 
 function renderMultiComponentModel(model) {
-    let html = '<div class="row">';
-    
-    // Show quantization options as simple choices
+    // Use tabbed interface for models with multiple quantizations
     if (model.quantizations.length > 1) {
-        html += `
-            <div class="col s12">
-                <h6>Available Options:</h6>
-        `;
-        
-        model.quantizations.forEach(quant => {
-            const quantFiles = getFilesForQuantization(model, quant);
-            const downloadedCount = quantFiles.filter(f => f.downloaded).length;
-            const totalCount = quantFiles.length;
-            const isFullyDownloaded = downloadedCount === totalCount;
-            const isPartiallyDownloaded = downloadedCount > 0 && downloadedCount < totalCount;
-            
-            let statusText = 'Available';
-            let statusClass = 'grey-text';
-            let statusIcon = 'radio_button_unchecked';
-            
-            if (isFullyDownloaded) {
-                statusText = 'Downloaded';
-                statusClass = 'green-text';
-                statusIcon = 'check_circle';
-            } else if (isPartiallyDownloaded) {
-                statusText = 'Partial';
-                statusClass = 'orange-text';
-                statusIcon = 'error';
-            }
-            
-            html += `
-                <div class="quantization-section">
-                    <div class="row valign-wrapper">
-                        <div class="col s1">
-                            <i class="material-icons ${statusClass}">${statusIcon}</i>
-                        </div>
-                        <div class="col s5">
-                            <strong>${quant}</strong>
-                            <br><span class="${statusClass}">${statusText}</span>
-                        </div>
-                        <div class="col s6 right-align">
-                            ${!isFullyDownloaded ? `
-                                <button class="btn waves-effect waves-light blue" 
-                                        onclick="downloadQuantization('${model.id}', '${quant}')">
-                                    Download
-                                </button>
-                            ` : `
-                                <button class="btn waves-effect waves-light red" 
-                                        onclick="deleteQuantization('${model.id}', '${quant}')">
-                                    Clear
-                                </button>
-                            `}
-                        </div>
-                    </div>
-                    ${(isFullyDownloaded || isPartiallyDownloaded) ? `
-                        <div class="file-list" style="margin-top: 10px; padding-left: 40px;">
-                            ${quantFiles.map(file => `
-                                <div class="file-item" style="font-size: 0.9em;">
-                                    <span class="${file.downloaded ? 'file-downloaded' : 'file-not-downloaded'}">
-                                        <i class="material-icons tiny">${file.downloaded ? 'check_circle' : 'radio_button_unchecked'}</i>
-                                        ${file.path.split('/').pop()}
-                                    </span>
-                                    ${file.size_mb ? `<span class="grey-text">${file.size_mb.toFixed(1)} MB</span>` : ''}
-                                </div>
-                            `).join('')}
-                        </div>
-                    ` : ''}
-                </div>
-            `;
-        });
-        
-        html += '</div>';
+        return renderTabbedQuantizations(model);
     } else {
-        // Single quantization option
-        const downloadedCount = model.files.filter(f => f.downloaded).length;
-        const totalCount = model.files.length;
+        return renderSingleQuantization(model);
+    }
+}
+
+function renderTabbedQuantizations(model) {
+    const modelId = model.id;
+    let html = '<div class="quantization-tabs">';
+    
+    // Tab headers
+    html += '<div class="tabs-container">';
+    html += '<ul class="tabs">';
+    model.quantizations.forEach((quant, index) => {
+        const isActive = index === 0 ? 'active' : '';
+        const quantFiles = getFilesForQuantization(model, quant);
+        const downloadedCount = quantFiles.filter(f => f.downloaded).length;
+        const totalCount = quantFiles.length;
+        const isFullyDownloaded = downloadedCount === totalCount;
+        
+        // Get estimated size for the quant
+        let sizeText = '';
+        if (quant.includes('Q4')) sizeText = ' (500MB)';
+        else if (quant.includes('INT8')) sizeText = ' (1GB)';
+        else if (quant.includes('FP16')) sizeText = ' (2GB)';
+        else if (quant.includes('FP32')) sizeText = ' (4GB)';
+        
+        let statusIcon = isFullyDownloaded ? 'check_circle' : 'radio_button_unchecked';
+        let tabClass = isFullyDownloaded ? 'tab-downloaded' : '';
+        
+        html += `
+            <li class="tab col s${Math.floor(12 / model.quantizations.length)}">
+                <a href="#quant-${modelId}-${index}" class="${isActive} ${tabClass}">
+                    <i class="material-icons tiny left">${statusIcon}</i>
+                    ${quant}${sizeText}
+                </a>
+            </li>
+        `;
+    });
+    html += '</ul>';
+    html += '</div>';
+    
+    // Tab content
+    model.quantizations.forEach((quant, index) => {
+        const isActive = index === 0 ? 'active' : '';
+        const quantFiles = getFilesForQuantization(model, quant);
+        const downloadedCount = quantFiles.filter(f => f.downloaded).length;
+        const totalCount = quantFiles.length;
         const isFullyDownloaded = downloadedCount === totalCount;
         const isPartiallyDownloaded = downloadedCount > 0 && downloadedCount < totalCount;
         
         let statusText = 'Available';
         let statusClass = 'grey-text';
-        let statusIcon = 'radio_button_unchecked';
         
         if (isFullyDownloaded) {
             statusText = 'Downloaded';
             statusClass = 'green-text';
-            statusIcon = 'check_circle';
         } else if (isPartiallyDownloaded) {
             statusText = 'Partial';
             statusClass = 'orange-text';
-            statusIcon = 'error';
         }
         
         html += `
+            <div id="quant-${modelId}-${index}" class="tab-content ${isActive}">
+                <div class="row valign-wrapper" style="margin-top: 20px;">
+                    <div class="col s6">
+                        <h6>${quant}</h6>
+                        <span class="${statusClass}">${statusText}</span>
+                        ${quantFiles.length > 0 ? `<span class="grey-text"> • ${quantFiles.length} files</span>` : ''}
+                    </div>
+                    <div class="col s6 right-align">
+                        ${!isFullyDownloaded ? `
+                            <button class="btn waves-effect waves-light blue" 
+                                    onclick="downloadQuantization('${model.id}', '${quant}')">
+                                <i class="material-icons left">cloud_download</i>Download
+                            </button>
+                        ` : `
+                            <button class="btn waves-effect waves-light red" 
+                                    onclick="deleteQuantization('${model.id}', '${quant}')">
+                                <i class="material-icons left">clear</i>Clear
+                            </button>
+                        `}
+                    </div>
+                </div>
+                ${(isFullyDownloaded || isPartiallyDownloaded) && quantFiles.length > 0 ? `
+                    <div class="file-tree" style="margin-top: 15px;">
+                        <h6><i class="material-icons tiny">folder</i> Files:</h6>
+                        ${quantFiles.map(file => `
+                            <div class="file-item" style="margin-left: 20px; padding: 5px 0;">
+                                <span class="${file.downloaded ? 'file-downloaded' : 'file-not-downloaded'}">
+                                    <i class="material-icons tiny">${file.downloaded ? 'check_circle' : 'radio_button_unchecked'}</i>
+                                    <span style="font-family: monospace;">${file.path}</span>
+                                </span>
+                                ${file.size_mb ? `<span class="grey-text right">${file.size_mb.toFixed(1)} MB</span>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    
+    // Initialize tabs after rendering
+    setTimeout(() => {
+        $(`#content-${modelId} .tabs`).tabs();
+    }, 100);
+    
+    return html;
+}
+
+function renderSingleQuantization(model) {
+    const downloadedCount = model.files.filter(f => f.downloaded).length;
+    const totalCount = model.files.length;
+    const isFullyDownloaded = downloadedCount === totalCount;
+    const isPartiallyDownloaded = downloadedCount > 0 && downloadedCount < totalCount;
+    
+    let statusText = 'Available';
+    let statusClass = 'grey-text';
+    let statusIcon = 'radio_button_unchecked';
+    
+    if (isFullyDownloaded) {
+        statusText = 'Downloaded';
+        statusClass = 'green-text';
+        statusIcon = 'check_circle';
+    } else if (isPartiallyDownloaded) {
+        statusText = 'Partial';
+        statusClass = 'orange-text';
+        statusIcon = 'error';
+    }
+    
+    return `
+        <div class="row">
             <div class="col s12">
                 <div class="row valign-wrapper">
                     <div class="col s1">
@@ -241,24 +285,22 @@ function renderMultiComponentModel(model) {
                     </div>
                 </div>
                 ${(isFullyDownloaded || isPartiallyDownloaded) ? `
-                    <div class="file-list" style="margin-top: 10px; padding-left: 40px;">
+                    <div class="file-tree" style="margin-top: 10px; padding-left: 40px;">
+                        <h6><i class="material-icons tiny">folder</i> Files:</h6>
                         ${model.files.map(file => `
-                            <div class="file-item" style="font-size: 0.9em;">
+                            <div class="file-item" style="font-size: 0.9em; padding: 2px 0;">
                                 <span class="${file.downloaded ? 'file-downloaded' : 'file-not-downloaded'}">
                                     <i class="material-icons tiny">${file.downloaded ? 'check_circle' : 'radio_button_unchecked'}</i>
-                                    ${file.path.split('/').pop()}
+                                    <span style="font-family: monospace;">${file.path}</span>
                                 </span>
-                                ${file.size_mb ? `<span class="grey-text">${file.size_mb.toFixed(1)} MB</span>` : ''}
+                                ${file.size_mb ? `<span class="grey-text right">${file.size_mb.toFixed(1)} MB</span>` : ''}
                             </div>
                         `).join('')}
                     </div>
                 ` : ''}
             </div>
-        `;
-    }
-    
-    html += '</div>';
-    return html;
+        </div>
+    `;
 }
 
 function renderSingleFileModel(model) {
@@ -287,22 +329,23 @@ function renderSingleFileModel(model) {
                 ${!file.downloaded ? `
                     <button class="btn waves-effect waves-light blue" 
                             onclick="downloadModel('${model.id}')">
-                        Download
+                        <i class="material-icons left">cloud_download</i>Download
                     </button>
                 ` : `
                     <button class="btn waves-effect waves-light red" 
                             onclick="deleteModel('${model.id}')">
-                        Clear
+                        <i class="material-icons left">clear</i>Clear
                     </button>
                 `}
             </div>
         </div>
         ${file.downloaded ? `
-            <div class="file-list" style="margin-top: 10px; padding-left: 40px;">
-                <div class="file-item" style="font-size: 0.9em;">
+            <div class="file-tree" style="margin-top: 15px;">
+                <h6><i class="material-icons tiny">folder</i> Files:</h6>
+                <div class="file-item">
                     <span class="file-downloaded">
                         <i class="material-icons tiny">check_circle</i>
-                        ${file.path.split('/').pop()}
+                        <span style="font-family: monospace;">${file.path}</span>
                     </span>
                     ${file.size_mb ? `<span class="grey-text">${file.size_mb.toFixed(1)} MB</span>` : ''}
                 </div>
@@ -311,10 +354,37 @@ function renderSingleFileModel(model) {
     `;
 }
 
+function renderGGUFQuantizedModel(model) {
+    // GGUF models are specifically for quantized versions
+    // Use tabbed interface for models with multiple quantizations
+    if (model.quantizations.length > 1) {
+        return renderTabbedQuantizations(model);
+    } else {
+        return renderSingleQuantization(model);
+    }
+}
+
 function getFilesForQuantization(model, quantization) {
-    // For multi-component models, we need to map quantization to specific files
+    // For single-file models, just return the single file
     if (model.architecture === 'single-file') {
         return model.files;
+    }
+    
+    // For diffusion models, working sets represent different quantization configurations
+    if (model.architecture === 'diffusion-pipeline') {
+        // For diffusion models, quantization represents working sets
+        // All files are potentially used by all working sets, so return all files
+        return model.files;
+    }
+    
+    // For GGUF models, filter by the specific quantization
+    if (model.architecture === 'gguf-quantized') {
+        // GGUF files are named with specific quantization patterns
+        return model.files.filter(file => {
+            const fileName = file.path.toLowerCase();
+            const quantLower = quantization.toLowerCase();
+            return fileName.includes(quantLower) || fileName.includes(quantLower.replace('_', '-'));
+        });
     }
     
     // For multi-component models, try to filter files by quantization suffix

@@ -18,15 +18,17 @@ from .diffusion_model_registry import (
 
 try:
     import onnxruntime as ort
+    from optimum.onnxruntime import ORTStableDiffusionPipeline
     ONNX_AVAILABLE = True
 except ImportError:
     ort = None
+    ORTStableDiffusionPipeline = None
     ONNX_AVAILABLE = False
 
 try:
     from diffusers import (
         StableDiffusionPipeline, StableDiffusionXLPipeline,
-        OnnxStableDiffusionPipeline, AutoPipelineForText2Image,
+        AutoPipelineForText2Image,
         DiffusionPipeline
     )
     DIFFUSERS_AVAILABLE = True
@@ -216,10 +218,10 @@ class DiffusionModelLoader:
         unet_spec = working_set.components[Component.UNET]
         base_repo = unet_spec.repo_id
         
-        # Load ONNX pipeline
-        pipeline = OnnxStableDiffusionPipeline.from_pretrained(
+        # Load ONNX pipeline using Optimum
+        pipeline = ORTStableDiffusionPipeline.from_pretrained(
             base_repo,
-            provider=providers
+            provider=providers[0] if providers else "CPUExecutionProvider"  # Use first provider
         )
         
         return pipeline
