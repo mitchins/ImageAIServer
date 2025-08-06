@@ -1,4 +1,4 @@
-const BASE_PATH = "/manage-api";
+const BASE_PATH = "/api/manage";
 
 let models = [];
 

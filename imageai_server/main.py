@@ -39,6 +39,7 @@ def register_routers():
         if (app_path.is_dir() and 
             not app_path.name.startswith('_') and 
             not app_path.name == 'shared' and
+            not app_path.name == 'multimodal_chat' and  # Skip - handled by chat_server
             (app_path / 'router.py').exists()):
             
             try:
@@ -55,95 +56,72 @@ def register_routers():
 
                     app.include_router(router, prefix=prefix, tags=[tag])
                     print(f"✅ Registered {app_path.name} router at {prefix}")
-                    
-                    if app_path.name == 'multimodal_chat':
-                        app.include_router(router, tags=["openai-compatible"])
-                        print(f"✅ Registered multimodal-chat router at root level for OpenAI compatibility")
             except Exception as e:
                 print(f"❌ Failed to register {app_path.name} router: {e}")
 
 register_routers()
 
 # Root redirect to main UI
-@app.get("/", response_class=HTMLResponse)
-async def root(request: Request):
-    """Root endpoint with helpful navigation to all UIs."""
+@app.get("/", include_in_schema=False)
+async def root():
+    """Redirect root to UI."""
+    return RedirectResponse(url="/ui/")
+
+# UI Pages
+@app.get("/ui/", response_class=HTMLResponse, include_in_schema=False)
+async def ui_home(request: Request):
+    """Main UI homepage."""
     return templates.TemplateResponse("home.html", {
         "request": request,
         "current_page": "home"
     })
 
-# Quick redirect for common paths
-@app.get("/ui")
-async def ui_redirect():
-    """Redirect /ui to the main management UI."""
-    return RedirectResponse(url="/manage/ui/")
-
-@app.get("/test")
-async def test_redirect():
-    """Redirect /test to the vision test UI."""
-    return RedirectResponse(url="/manage/ui/vision-test.html")
-
-@app.get("/generate", response_class=HTMLResponse)
-async def generate_page(request: Request):
-    """Generate images page."""
-    return templates.TemplateResponse("generate.html", {
-        "request": request,
-        "current_page": "generate"
-    })
-
-@app.get("/manage/ui/generate.html")
-async def generate_redirect():
-    """Redirect old generate URL to new route."""
-    return RedirectResponse(url="/generate")
-
-@app.get("/favicon.ico")
-async def favicon():
-    """Redirect favicon requests to the static icon."""
-    return RedirectResponse(url="/static/icon.png")
-
-@app.get("/models", response_class=HTMLResponse)
-async def models_page(request: Request):
-    """Model management page."""
+@app.get("/ui/models", response_class=HTMLResponse, include_in_schema=False)
+async def ui_models(request: Request):
+    """Model management UI."""
     return templates.TemplateResponse("models.html", {
         "request": request,
         "current_page": "models"
     })
 
-@app.get("/vision-chat", response_class=HTMLResponse)
-async def vision_chat_page(request: Request):
-    """Vision chat page."""
-    return templates.TemplateResponse("vision-chat.html", {
+@app.get("/ui/generate", response_class=HTMLResponse, include_in_schema=False)
+async def ui_generate(request: Request):
+    """Generate images UI."""
+    return templates.TemplateResponse("generate.html", {
         "request": request,
-        "current_page": "test"
+        "current_page": "generate"
     })
 
-@app.get("/compare-faces", response_class=HTMLResponse)
-async def compare_faces_page(request: Request):
-    """Face comparison page."""
+@app.get("/ui/vision-chat", response_class=HTMLResponse, include_in_schema=False)
+async def ui_vision_chat(request: Request):
+    """Vision chat UI."""
+    return templates.TemplateResponse("vision-chat.html", {
+        "request": request,
+        "current_page": "vision-chat"
+    })
+
+@app.get("/ui/compare-faces", response_class=HTMLResponse, include_in_schema=False)
+async def ui_compare_faces(request: Request):
+    """Face comparison UI."""
     return templates.TemplateResponse("compare-faces.html", {
         "request": request,
         "current_page": "compare-faces"
     })
 
-# Redirects for old URLs
-@app.get("/manage/ui/")
-async def models_redirect():
-    """Redirect old models URL to new route."""
-    return RedirectResponse(url="/models")
-
-@app.get("/manage/ui/vision-test.html")
-async def vision_test_redirect():
-    """Redirect old vision test URL to new route."""
-    return RedirectResponse(url="/vision-chat")
-
-@app.get("/docs", response_class=HTMLResponse)
-async def custom_swagger_ui_html(request: Request):
-    """Custom docs page with navigation."""
+@app.get("/ui/docs", response_class=HTMLResponse, include_in_schema=False)
+async def ui_docs(request: Request):
+    """API documentation UI."""
     return templates.TemplateResponse("docs.html", {
         "request": request,
         "current_page": "docs"
     })
+
+# Favicon redirect
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    """Redirect favicon requests to the static icon."""
+    return RedirectResponse(url="/static/icon.png")
+
 
 app.mount(
     "/manage/ui",
@@ -166,7 +144,7 @@ app.mount(
 )
 
 
-@app.get("/v1/backends")
+@app.get("/v1/backends", tags=["system"])
 async def list_backends():
     """List available model backends and their status."""
     try:
@@ -242,40 +220,9 @@ async def list_backends():
         }
 
 
-@app.get("/v1/models")
-async def list_models():
-    """List available chat-compatible models in OpenAI-compatible format."""
-    try:
-        cached_entries = list_cached_entries()
-        
-        # Filter for ONNX models that are LLM-capable and create OpenAI-compatible response
-        models = []
-        chat_compatible_types = ModelType.chat_compatible_types()
-        
-        for entry in cached_entries:
-            if (entry["path"].endswith(".onnx") and 
-                entry["kind"] in [t.value for t in chat_compatible_types]):
-                
-                # Always create full model ID with repo and complete file path
-                # This gives users the exact string they need for API calls
-                model_id = f"{entry['repo']}/{entry['path']}"
-                
-                models.append({
-                    "id": model_id,
-                    "object": "model",
-                    "created": int(entry["last_used"]),
-                    "owned_by": entry["repo"].split("/")[0] if "/" in entry["repo"] else "huggingface",
-                })
-        
-        return {
-            "object": "list",
-            "data": models
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/v1/system/status")
+@app.get("/v1/system/status", tags=["system"])
 async def get_system_status():
     """Get system status including uptime and memory usage."""
     try:
@@ -385,7 +332,57 @@ def _is_model_downloaded(repo_id: str, required_files: Optional[List[str]] = Non
         return False
 
 
-@app.get("/v1/vision-models")
+@app.get("/v1/health", tags=["system"])
+async def health_check():
+    """Health check endpoint for system status."""
+    try:
+        from .shared.model_manager import get_model_manager
+        from .shared.torch_loader import TORCH_AVAILABLE
+        
+        model_manager = get_model_manager()
+        available_backends = [b.value for b in model_manager.get_available_backends()]
+        
+        # Check critical dependencies
+        dependency_status = {}
+        critical_deps = [
+            "onnxruntime",
+            "dghs-imgutils", 
+            "transformers",
+            "huggingface_hub"
+        ]
+        
+        for dep in critical_deps:
+            try:
+                if dep == "dghs-imgutils":
+                    import imgutils
+                    dependency_status[dep] = "available"
+                elif dep == "onnxruntime":
+                    import onnxruntime
+                    dependency_status[dep] = "available"
+                elif dep == "transformers":
+                    import transformers
+                    dependency_status[dep] = "available"
+                elif dep == "huggingface_hub":
+                    import huggingface_hub
+                    dependency_status[dep] = "available"
+            except ImportError:
+                dependency_status[dep] = "missing"
+        
+        return {
+            "status": "ok",
+            "service": "imageai-server",
+            "pytorch_available": TORCH_AVAILABLE,
+            "available_backends": available_backends,
+            "dependencies": dependency_status
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "service": "imageai-server",
+            "error": str(e)
+        }
+
+@app.get("/v1/vision-models", tags=["system"])
 async def list_vision_models():
     """List only locally available vision-capable models (ONNX and PyTorch/GGUF)."""
     try:

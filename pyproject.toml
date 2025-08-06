@@ -40,6 +40,7 @@ dependencies = [
     "sentencepiece>=0.1.99",
     "optimum>=1.12.0",
     "jinja2>=3.1.2",
+    "dghs-imgutils>=0.18.0",
 ]
 
 [project.optional-dependencies]

@@ -18,7 +18,11 @@ from ..shared.unified_model_registry import UnifiedModel, ModelFile
 from ..shared.unified_model_registry import UnifiedModelRegistry
 registry = UnifiedModelRegistry()
 
-router = APIRouter(prefix="", tags=["manage"])
+router = APIRouter()
+
+# Module-level variables for auto-registration
+router_prefix = "/api/manage"
+router_tag = "manage"
 
 
 def _normalize_repo_id(raw: str) -> str:
@@ -85,7 +89,7 @@ def _validate_paths(repo_id: str, file_path: str | None = None) -> None:
             raise HTTPException(status_code=400, detail="Path traversal detected")
 
 
-@router.get("/repos/{repo_id:path}/files", response_model=List[FileEntry], tags=["manage"])
+@router.get("/repos/{repo_id:path}/files", response_model=List[FileEntry])
 async def get_remote_files(repo_id: str):
     norm_repo = _normalize_repo_id(repo_id)
     _validate_paths(norm_repo)
@@ -98,13 +102,13 @@ async def get_remote_files(repo_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/cache", response_model=List[CacheEntry], tags=["manage"])
+@router.get("/cache", response_model=List[CacheEntry])
 async def get_cache():
     entries = list_cached_entries()
     return entries
 
 
-@router.post("/cache/download", status_code=202, response_model=None, tags=["manage"])
+@router.post("/cache/download", status_code=202, response_model=None)
 async def post_download(req: DownloadRequest):
     repo = _normalize_repo_id(req.repo)
     _validate_paths(repo, req.path)
@@ -114,7 +118,7 @@ async def post_download(req: DownloadRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/cache", status_code=200, response_model=None, tags=["manage"])
+@router.delete("/cache", status_code=200, response_model=None)
 async def delete_cache(req: DeleteRequest):
     repo = _normalize_repo_id(req.repo)
     _validate_paths(repo, req.path)
@@ -159,7 +163,7 @@ class DeleteModelRequest(BaseModel):
     quantization: Optional[str] = None  # For multi-component models only
 
 
-@router.get("/unified-models", response_model=List[UnifiedModelResponse], tags=["unified-manage"])
+@router.get("/unified-models", response_model=List[UnifiedModelResponse])
 async def get_unified_models():
     """Get all unified models across chat and face servers."""
     try:
@@ -199,7 +203,7 @@ async def get_unified_models():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/unified-models/{model_id}", response_model=UnifiedModelResponse, tags=["unified-manage"])
+@router.get("/unified-models/{model_id}", response_model=UnifiedModelResponse)
 async def get_unified_model(model_id: str):
     """Get details for a specific unified model."""
     try:
@@ -237,7 +241,7 @@ async def get_unified_model(model_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/unified-models/download", status_code=202, tags=["unified-manage"])
+@router.post("/unified-models/download", status_code=202)
 async def download_unified_model(req: DownloadModelRequest):
     """Download all files for a unified model configuration."""
     try:
@@ -296,7 +300,7 @@ async def download_unified_model(req: DownloadModelRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/unified-models/{model_id}", status_code=200, tags=["unified-manage"])
+@router.delete("/unified-models/{model_id}", status_code=200)
 async def delete_unified_model(model_id: str, quantization: Optional[str] = None):
     """Delete all files for a unified model (or specific quantization)."""
     try:

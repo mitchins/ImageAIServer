@@ -39,10 +39,16 @@
     }
     
     .face-comparison {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
+        display: flex;
+        justify-content: center;
         gap: 2rem;
         margin-bottom: 2rem;
+        flex-wrap: wrap;
+    }
+    
+    .face-upload-container {
+        flex: 0 1 300px;
+        max-width: 400px;
     }
     
     .result-container {
@@ -57,8 +63,79 @@
     .confidence-medium { color: #ffc107; }
     .confidence-low { color: #dc3545; }
     
+    /* Segment Control Styles */
+    .face-type-segments {
+        display: inline-flex;
+        border: 2px solid #667eea;
+        border-radius: 25px;
+        overflow: hidden;
+        background: white;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    
+    .face-type-segments input[type="radio"] {
+        display: none;
+    }
+    
+    .segment-btn {
+        padding: 0.75rem 1.5rem;
+        background: white;
+        color: #667eea;
+        border: none;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-weight: 500;
+        border-right: 1px solid #e0e0e0;
+        margin: 0;
+        min-width: 120px;
+        justify-content: center;
+    }
+    
+    .segment-btn:last-child {
+        border-right: none;
+    }
+    
+    .segment-btn:hover {
+        background: rgba(102, 126, 234, 0.1);
+    }
+    
+    .face-type-segments input[type="radio"]:checked + .segment-btn {
+        background: #667eea;
+        color: white;
+    }
+    
+    .segment-btn .material-symbols-rounded {
+        font-size: 1.2rem;
+    }
+    
     @media (max-width: 768px) {
-        .face-comparison { grid-template-columns: 1fr; }
+        .face-comparison { 
+            flex-direction: column;
+            align-items: center;
+        }
+        .face-upload-container {
+            width: 100%;
+            max-width: 300px;
+        }
+        
+        .face-type-segments {
+            flex-direction: column;
+            border-radius: 15px;
+        }
+        
+        .segment-btn {
+            border-right: none;
+            border-bottom: 1px solid #e0e0e0;
+            min-width: auto;
+            width: 200px;
+        }
+        
+        .segment-btn:last-child {
+            border-bottom: none;
+        }
     }
 </style>
 {% endblock %}
@@ -83,8 +160,36 @@
         <div class="col s12">
             <div class="card">
                 <div class="card-content">
+                    <!-- Face Type Selection -->
+                    <div class="row">
+                        <div class="col s12">
+                            <div class="center-align" style="margin-bottom: 2rem;">
+                                <h6 style="margin-bottom: 1rem; color: #666;">Face Detection Type</h6>
+                                <div class="face-type-segments">
+                                    <input type="radio" id="face-type-photo" name="face-type" value="photo" checked>
+                                    <label for="face-type-photo" class="segment-btn">
+                                        <span class="material-symbols-rounded">photo_camera</span>
+                                        Real Photos
+                                    </label>
+                                    
+                                    <input type="radio" id="face-type-anime" name="face-type" value="anime">
+                                    <label for="face-type-anime" class="segment-btn">
+                                        <span class="material-symbols-rounded">animation</span>
+                                        Anime/Manga
+                                    </label>
+                                    
+                                    <input type="radio" id="face-type-cg" name="face-type" value="cg">
+                                    <label for="face-type-cg" class="segment-btn">
+                                        <span class="material-symbols-rounded">brush</span>
+                                        CG/Digital Art
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <div class="face-comparison">
-                        <div class="col s12 m6">
+                        <div class="face-upload-container">
                             <div class="upload-zone" id="face-upload-a">
                                 <span class="material-symbols-rounded" style="font-size: 3rem; color: #6c757d; margin-bottom: 1rem;">person</span>
                                 <div class="upload-text">Drop Face A here</div>
@@ -92,7 +197,7 @@
                                 <input type="file" id="face-file-a" accept="image/*" style="display: none;">
                             </div>
                         </div>
-                        <div class="col s12 m6">
+                        <div class="face-upload-container">
                             <div class="upload-zone" id="face-upload-b">
                                 <span class="material-symbols-rounded" style="font-size: 3rem; color: #6c757d; margin-bottom: 1rem;">person</span>
                                 <div class="upload-text">Drop Face B here</div>
@@ -161,6 +266,7 @@
 </div>
 {% endblock %}
 
+
 {% block scripts %}
 <script>
     let faceImageA = null;
@@ -178,6 +284,9 @@
         const resultDiv = document.getElementById('face-result');
         const errorContainer = document.getElementById('error-container');
         
+        // Get selected face type
+        const faceType = document.querySelector('input[name="face-type"]:checked').value;
+        
         submitBtn.disabled = true;
         spinner.style.display = 'inline-block';
         errorContainer.style.display = 'none';
@@ -186,8 +295,9 @@
             const formData = new FormData();
             formData.append('image_a', faceImageA);
             formData.append('image_b', faceImageB);
+            formData.append('face_type', faceType);
             
-            const response = await fetch('/v1/image/compare_faces', {
+            const response = await fetch('/api/face/compare', {
                 method: 'POST',
                 body: formData
             });

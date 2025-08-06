@@ -1,31 +1,99 @@
 {% extends "base.html" %}
 
-{% block title %}ONNX Model Management - ImageAI Server{% endblock %}
+{% block title %}Model Management - ImageAI Server{% endblock %}
 
 {% block head %}
 <style>
-    .model-section {
-        margin-bottom: 20px;
+    /* Tabs styling */
+    .tabs-container {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin: 2rem 0;
+        overflow: hidden;
+    }
+    
+    .tabs {
+        background: #f5f5f5;
+        border-bottom: 2px solid #e0e0e0;
+    }
+    
+    .tabs .tab a {
+        color: #666;
+        font-weight: 500;
+        text-transform: none;
+        font-size: 1rem;
+        padding: 0 24px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .tabs .tab a:hover {
+        color: #333;
+        background: rgba(0,0,0,0.04);
+    }
+    
+    .tabs .tab a.active {
+        color: #667eea;
+        background: white;
+        border-bottom: 2px solid #667eea;
+    }
+    
+    .tabs .indicator {
+        display: none;
+    }
+    
+    /* Model type badges */
+    .model-count-badge {
+        background: #e0e0e0;
+        color: #666;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        margin-left: 4px;
+    }
+    
+    .model-count-badge.active {
+        background: #667eea;
+        color: white;
+    }
+    
+    .total-size {
+        font-size: 0.8rem;
+        color: #999;
+        margin-left: 8px;
+    }
+    
+    /* Model cards */
+    .model-card {
         border: 1px solid #e0e0e0;
         border-radius: 8px;
+        margin-bottom: 1rem;
+        background: white;
+        transition: box-shadow 0.3s ease;
+    }
+    
+    .model-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
     
     .model-header {
-        padding: 15px;
-        background-color: #f5f5f5;
+        padding: 1rem;
+        background: #f8f9fa;
+        border-bottom: 1px solid #e0e0e0;
         cursor: pointer;
         display: flex;
         justify-content: space-between;
         align-items: center;
-        border-radius: 8px 8px 0 0;
     }
     
     .model-header:hover {
-        background-color: #eeeeee;
+        background: #e9ecef;
     }
     
     .model-content {
-        padding: 15px;
+        padding: 1rem;
         display: none;
     }
     
@@ -33,124 +101,214 @@
         display: block;
     }
     
-    .server-badge {
-        padding: 4px 8px;
-        border-radius: 4px;
-        font-size: 12px;
-        color: white;
-        margin-right: 10px;
+    /* Backend badges */
+    .backend-badge {
+        padding: 4px 12px;
+        border-radius: 16px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
     }
     
-    .server-chat { background-color: #2196f3; }
-    .server-face { background-color: #4caf50; }
+    .backend-onnx { 
+        background: #4caf50; 
+        color: white; 
+    }
     
+    .backend-pytorch { 
+        background: #ff9800; 
+        color: white; 
+    }
+    
+    .backend-gguf { 
+        background: #2196f3; 
+        color: white; 
+    }
+    
+    /* Status indicators */
     .status-badge {
-        padding: 4px 8px;
-        border-radius: 4px;
-        font-size: 12px;
-        color: white;
+        padding: 4px 12px;
+        border-radius: 16px;
+        font-size: 0.75rem;
+        font-weight: 500;
     }
     
-    .status-downloaded { background-color: #4caf50; }
-    .status-partial { background-color: #ff9800; }
-    .status-partial-files { background-color: #ff9800; }
-    .status-not-downloaded { background-color: #f44336; }
-    .status-error { background-color: #9c27b0; }
-    .status-quants { background-color: #2196f3; }
-    
-    .quantization-section {
-        margin: 10px 0;
-        padding: 10px;
-        border: 1px solid #e0e0e0;
-        border-radius: 4px;
-        background-color: #fafafa;
+    .status-loaded { 
+        background: #e8f5e9; 
+        color: #2e7d32; 
     }
     
-    .file-list {
-        margin-top: 10px;
+    .status-available { 
+        background: #f3e5f5; 
+        color: #7b1fa2; 
     }
     
-    .file-item {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 5px 0;
-        border-bottom: 1px solid #e0e0e0;
+    .status-downloading { 
+        background: #e3f2fd; 
+        color: #1565c0; 
     }
     
-    .file-item:last-child {
-        border-bottom: none;
+    /* Action buttons */
+    .btn-small {
+        padding: 6px 16px;
+        font-size: 0.875rem;
     }
     
-    .file-downloaded { color: #4caf50; }
-    .file-not-downloaded { color: #f44336; }
-    
-    .expand-icon {
-        transition: transform 0.3s;
+    /* Tab content */
+    .tab-content {
+        padding: 2rem;
+        min-height: 400px;
     }
     
-    .expand-icon.rotated {
-        transform: rotate(180deg);
-    }
-    
-    .loading {
-        display: none;
-        margin: 20px 0;
+    .empty-state {
         text-align: center;
+        padding: 4rem 2rem;
+        color: #999;
     }
     
-    /* Navigation integration with Materialize */
-    .comfyai-nav + .container {
-        margin-top: 2rem !important;
+    .empty-state .material-symbols-rounded {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+        opacity: 0.3;
     }
     
-    /* Professional layout styling - no card for consistency with docs */
-    .main-container {
-        max-width: 1200px;
-        margin: 2rem auto;
-        padding: 0 2rem;
+    /* Loading states */
+    .loading-skeleton {
+        background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+        background-size: 200% 100%;
+        animation: loading 1.5s infinite;
+        border-radius: 4px;
+        height: 60px;
+        margin-bottom: 1rem;
+    }
+    
+    @keyframes loading {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+    }
+    
+    /* Refresh/Clear buttons alignment */
+    .action-buttons {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+        flex-wrap: wrap;
     }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container">
+    <!-- Header -->
     <div class="row">
         <div class="col s12">
             <div class="card-panel center-align imageai-gradient white-text" style="margin-top: 2rem;">
                 <h4 style="margin-bottom: 0.5rem;">
                     <span class="material-symbols-rounded large" style="vertical-align: middle; margin-right: 0.5rem;">settings</span>
-                    Pre-configured ONNX Models
+                    Model Management
                 </h4>
-                <p style="opacity: 0.9; margin: 0;">Download and manage curated models for Chat and Face servers</p>
+                <p style="opacity: 0.9; margin: 0;">Manage AI models across all services</p>
             </div>
         </div>
     </div>
     
-    <div class="loading" id="loading">
-        <div class="preloader-wrapper active">
-            <div class="spinner-layer spinner-blue-only">
-                <div class="circle-clipper left">
-                    <div class="circle"></div>
-                </div>
-                <div class="gap-patch">
-                    <div class="circle"></div>
-                </div>
-                <div class="circle-clipper right">
-                    <div class="circle"></div>
-                </div>
+    <!-- Tabs Container -->
+    <div class="tabs-container">
+        <ul class="tabs">
+            <li class="tab col s3">
+                <a href="#diffusion-tab" class="active">
+                    <span class="material-symbols-rounded">palette</span>
+                    Diffusion
+                    <span class="model-count-badge active" id="diffusion-count">0</span>
+                    <span class="total-size" id="diffusion-size"></span>
+                </a>
+            </li>
+            <li class="tab col s3">
+                <a href="#chat-tab">
+                    <span class="material-symbols-rounded">chat</span>
+                    VLM/Chat
+                    <span class="model-count-badge" id="chat-count">0</span>
+                    <span class="total-size" id="chat-size"></span>
+                </a>
+            </li>
+            <li class="tab col s3">
+                <a href="#face-tab">
+                    <span class="material-symbols-rounded">face</span>
+                    Face/Embedding
+                    <span class="model-count-badge" id="face-count">0</span>
+                    <span class="total-size" id="face-size"></span>
+                </a>
+            </li>
+        </ul>
+        
+        <!-- Diffusion Tab -->
+        <div id="diffusion-tab" class="tab-content">
+            <div class="action-buttons" style="margin-bottom: 2rem;">
+                <button class="btn waves-effect waves-light blue" onclick="refreshDiffusionModels()">
+                    <span class="material-symbols-rounded left">refresh</span>Refresh
+                </button>
+                <button class="btn waves-effect waves-light red" onclick="clearDiffusionCache()">
+                    <span class="material-symbols-rounded left">clear_all</span>Clear Cache
+                </button>
             </div>
+            
+            <div id="diffusion-loading" class="center-align" style="display: none;">
+                <div class="preloader-wrapper active">
+                    <div class="spinner-layer spinner-blue-only">
+                        <div class="circle-clipper left"><div class="circle"></div></div>
+                        <div class="gap-patch"><div class="circle"></div></div>
+                        <div class="circle-clipper right"><div class="circle"></div></div>
+                    </div>
+                </div>
+                <p>Loading diffusion models...</p>
+            </div>
+            
+            <div id="diffusion-models-container"></div>
         </div>
-        <p>Loading models...</p>
-    </div>
-    
-    <div id="models-container"></div>
-    
-    <div class="row">
-        <div class="col s12">
-            <button class="btn waves-effect waves-light imageai-gradient" onclick="refreshModels()">
-                <span class="material-symbols-rounded left">refresh</span>Refresh
-            </button>
+        
+        <!-- Chat/VLM Tab -->
+        <div id="chat-tab" class="tab-content" style="display: none;">
+            <div class="action-buttons" style="margin-bottom: 2rem;">
+                <button class="btn waves-effect waves-light blue" onclick="refreshChatModels()">
+                    <span class="material-symbols-rounded left">refresh</span>Refresh
+                </button>
+            </div>
+            
+            <div id="chat-loading" class="center-align" style="display: none;">
+                <div class="preloader-wrapper active">
+                    <div class="spinner-layer spinner-blue-only">
+                        <div class="circle-clipper left"><div class="circle"></div></div>
+                        <div class="gap-patch"><div class="circle"></div></div>
+                        <div class="circle-clipper right"><div class="circle"></div></div>
+                    </div>
+                </div>
+                <p>Loading chat models...</p>
+            </div>
+            
+            <div id="chat-models-container"></div>
+        </div>
+        
+        <!-- Face/Embedding Tab -->
+        <div id="face-tab" class="tab-content" style="display: none;">
+            <div class="action-buttons" style="margin-bottom: 2rem;">
+                <button class="btn waves-effect waves-light blue" onclick="refreshFaceModels()">
+                    <span class="material-symbols-rounded left">refresh</span>Refresh
+                </button>
+            </div>
+            
+            <div id="face-loading" class="center-align" style="display: none;">
+                <div class="preloader-wrapper active">
+                    <div class="spinner-layer spinner-blue-only">
+                        <div class="circle-clipper left"><div class="circle"></div></div>
+                        <div class="gap-patch"><div class="circle"></div></div>
+                        <div class="circle-clipper right"><div class="circle"></div></div>
+                    </div>
+                </div>
+                <p>Loading face/embedding models...</p>
+            </div>
+            
+            <div id="face-models-container"></div>
         </div>
     </div>
 </div>
@@ -158,4 +316,423 @@
 
 {% block scripts %}
 <script src="/static/manage/unified-manage.js"></script>
+<script>
+// Model Management System
+let allModels = {
+    diffusion: {},
+    chat: [],
+    face: []
+};
+
+// Initialize tabs
+document.addEventListener('DOMContentLoaded', function() {
+    const tabs = document.querySelectorAll('.tabs');
+    M.Tabs.init(tabs, {
+        onShow: function(tab) {
+            // Update active states
+            const tabLinks = document.querySelectorAll('.tabs .tab a');
+            tabLinks.forEach(link => {
+                const badge = link.querySelector('.model-count-badge');
+                if (badge) {
+                    if (link.classList.contains('active')) {
+                        badge.classList.add('active');
+                    } else {
+                        badge.classList.remove('active');
+                    }
+                }
+            });
+        }
+    });
+    
+    // Load all model types
+    loadAllModels();
+});
+
+async function loadAllModels() {
+    await Promise.all([
+        loadDiffusionModels(),
+        loadChatModels(),
+        loadFaceModels()
+    ]);
+}
+
+// Diffusion Models Management
+async function loadDiffusionModels() {
+    showDiffusionLoading(true);
+    try {
+        const response = await fetch('/v1/models/generation');
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        const data = await response.json();
+        allModels.diffusion = data.models || {};
+        
+        // Update count
+        const count = Object.keys(allModels.diffusion).length;
+        document.getElementById('diffusion-count').textContent = count;
+        
+        renderDiffusionModels();
+    } catch (error) {
+        console.error('Error loading diffusion models:', error);
+        showDiffusionError(`Failed to load diffusion models: ${error.message}`);
+    } finally {
+        showDiffusionLoading(false);
+    }
+}
+
+function showDiffusionLoading(show) {
+    document.getElementById('diffusion-loading').style.display = show ? 'block' : 'none';
+}
+
+function showDiffusionError(message) {
+    const container = document.getElementById('diffusion-models-container');
+    container.innerHTML = `
+        <div class="card-panel red lighten-4">
+            <span class="red-text text-darken-2">
+                <i class="material-symbols-rounded left">error</i>
+                ${message}
+            </span>
+        </div>
+    `;
+}
+
+function renderDiffusionModels() {
+    const container = document.getElementById('diffusion-models-container');
+    
+    if (!allModels.diffusion || Object.keys(allModels.diffusion).length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="material-symbols-rounded">auto_awesome</i>
+                <p>No diffusion models available</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '';
+    for (const [modelId, modelData] of Object.entries(allModels.diffusion)) {
+        const backendClass = `backend-${modelData.engine || 'pytorch'}`;
+        
+        html += `
+            <div class="model-card" data-model-id="${modelId}">
+                <div class="model-header" onclick="toggleModel('diffusion-${modelId}')">
+                    <div>
+                        <strong>${modelData.display_name || modelId}</strong>
+                        <span class="backend-badge ${backendClass}">${modelData.engine || 'PyTorch'}</span>
+                        <span class="status-badge status-available">Available</span>
+                    </div>
+                    <i class="material-symbols-rounded expand-icon" id="icon-diffusion-${modelId}">expand_more</i>
+                </div>
+                <div class="model-content" id="content-diffusion-${modelId}">
+                    <div class="row">
+                        <div class="col s12 m6">
+                            <p><strong>Architecture:</strong> ${modelData.architecture || 'N/A'}</p>
+                            <p><strong>Working Set:</strong> ${modelData.working_set || 'Default'}</p>
+                            <p><strong>Resolution:</strong> ${modelData.min_resolution}-${modelData.max_resolution}px</p>
+                            ${modelData.model_size_mb ? `<p><strong>Size:</strong> ${formatSize(modelData.model_size_mb)}</p>` : ''}
+                        </div>
+                        <div class="col s12 m6">
+                            <p><strong>Negative Prompt:</strong> ${modelData.supports_negative_prompt ? 'Supported' : 'Not supported'}</p>
+                            <p><strong>Description:</strong> ${modelData.description || 'No description'}</p>
+                        </div>
+                    </div>
+                    ${renderDiffusionModelFiles(modelData)}
+                </div>
+            </div>
+        `;
+    }
+    
+    container.innerHTML = html;
+}
+
+// Chat Models Management
+async function loadChatModels() {
+    showChatLoading(true);
+    try {
+        const response = await fetch('/api/manage/unified-models');
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        const models = await response.json();
+        
+        // Filter for chat models
+        allModels.chat = models.filter(m => m.server === 'chat');
+        
+        // Update count
+        document.getElementById('chat-count').textContent = allModels.chat.length;
+        
+        // Calculate total size
+        const totalSize = allModels.chat.reduce((sum, m) => sum + (m.total_size_mb || 0), 0);
+        if (totalSize > 0) {
+            document.getElementById('chat-size').textContent = formatSize(totalSize);
+        }
+        
+        renderChatModels();
+    } catch (error) {
+        console.error('Error loading chat models:', error);
+        showChatError(`Failed to load chat models: ${error.message}`);
+    } finally {
+        showChatLoading(false);
+    }
+}
+
+function showChatLoading(show) {
+    document.getElementById('chat-loading').style.display = show ? 'block' : 'none';
+}
+
+function showChatError(message) {
+    const container = document.getElementById('chat-models-container');
+    container.innerHTML = `
+        <div class="card-panel red lighten-4">
+            <span class="red-text text-darken-2">
+                <i class="material-symbols-rounded left">error</i>
+                ${message}
+            </span>
+        </div>
+    `;
+}
+
+function renderChatModels() {
+    const container = document.getElementById('chat-models-container');
+    
+    if (!allModels.chat || allModels.chat.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="material-symbols-rounded">chat</i>
+                <p>No chat models available</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '';
+    allModels.chat.forEach(model => {
+        const statusClass = model.status === 'downloaded' ? 'status-loaded' : 'status-available';
+        const statusText = model.status === 'downloaded' ? 'Downloaded' : 'Available';
+        
+        // Determine backend based on actual architecture
+        const backendDisplay = model.architecture === 'gemma-3n' ? 'Gemma-3N' : 'ONNX';
+        const backendClass = model.architecture === 'gemma-3n' ? 'backend-pytorch' : 'backend-onnx';
+        
+        html += `
+            <div class="model-card" data-model-id="${model.id}">
+                <div class="model-header" onclick="toggleModel('chat-${model.id}')">
+                    <div>
+                        <strong>${model.name}</strong>
+                        <span class="backend-badge ${backendClass}">${backendDisplay}</span>
+                        <span class="status-badge ${statusClass}">${statusText}</span>
+                        ${model.total_size_mb > 0 ? `<span class="grey-text">(${formatSize(model.total_size_mb)})</span>` : ''}
+                    </div>
+                    <i class="material-symbols-rounded expand-icon" id="icon-chat-${model.id}">expand_more</i>
+                </div>
+                <div class="model-content" id="content-chat-${model.id}">
+                    <p class="grey-text">${model.description}</p>
+                    ${renderModelFiles(model)}
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+// Face Models Management
+async function loadFaceModels() {
+    showFaceLoading(true);
+    try {
+        const response = await fetch('/api/manage/unified-models');
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        const models = await response.json();
+        
+        // Filter for face models
+        allModels.face = models.filter(m => m.server === 'face');
+        
+        // Update count
+        document.getElementById('face-count').textContent = allModels.face.length;
+        
+        // Calculate total size
+        const totalSize = allModels.face.reduce((sum, m) => sum + (m.total_size_mb || 0), 0);
+        if (totalSize > 0) {
+            document.getElementById('face-size').textContent = formatSize(totalSize);
+        }
+        
+        renderFaceModels();
+    } catch (error) {
+        console.error('Error loading face models:', error);
+        showFaceError(`Failed to load face models: ${error.message}`);
+    } finally {
+        showFaceLoading(false);
+    }
+}
+
+function showFaceLoading(show) {
+    document.getElementById('face-loading').style.display = show ? 'block' : 'none';
+}
+
+function showFaceError(message) {
+    const container = document.getElementById('face-models-container');
+    container.innerHTML = `
+        <div class="card-panel red lighten-4">
+            <span class="red-text text-darken-2">
+                <i class="material-symbols-rounded left">error</i>
+                ${message}
+            </span>
+        </div>
+    `;
+}
+
+function renderFaceModels() {
+    const container = document.getElementById('face-models-container');
+    
+    if (!allModels.face || allModels.face.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="material-symbols-rounded">face</i>
+                <p>No face/embedding models available</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '';
+    allModels.face.forEach(model => {
+        const statusClass = model.status === 'downloaded' ? 'status-loaded' : 'status-available';
+        const statusText = model.status === 'downloaded' ? 'Downloaded' : 'Available';
+        
+        // Face models are always ONNX
+        html += `
+            <div class="model-card" data-model-id="${model.id}">
+                <div class="model-header" onclick="toggleModel('face-${model.id}')">
+                    <div>
+                        <strong>${model.name}</strong>
+                        <span class="backend-badge backend-onnx">ONNX</span>
+                        <span class="status-badge ${statusClass}">${statusText}</span>
+                        ${model.total_size_mb > 0 ? `<span class="grey-text">(${formatSize(model.total_size_mb)})</span>` : ''}
+                    </div>
+                    <i class="material-symbols-rounded expand-icon" id="icon-face-${model.id}">expand_more</i>
+                </div>
+                <div class="model-content" id="content-face-${model.id}">
+                    <p class="grey-text">${model.description}</p>
+                    ${renderModelFiles(model)}
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+// Helper functions
+function toggleModel(modelId) {
+    const content = document.getElementById(`content-${modelId}`);
+    const icon = document.getElementById(`icon-${modelId}`);
+    
+    if (content.classList.contains('expanded')) {
+        content.classList.remove('expanded');
+        icon.textContent = 'expand_more';
+    } else {
+        content.classList.add('expanded');
+        icon.textContent = 'expand_less';
+    }
+}
+
+function formatSize(mb) {
+    if (mb >= 1024) {
+        return `${(mb / 1024).toFixed(1)} GB`;
+    }
+    return `${mb.toFixed(1)} MB`;
+}
+
+function renderModelFiles(model) {
+    if (!model.files || model.files.length === 0) return '';
+    
+    let html = '<div class="file-list" style="margin-top: 1rem;">';
+    model.files.forEach(file => {
+        const downloaded = file.downloaded ? 'green-text' : 'grey-text';
+        const icon = file.downloaded ? 'check_circle' : 'radio_button_unchecked';
+        html += `
+            <div class="file-item" style="padding: 0.5rem 0; border-bottom: 1px solid #eee;">
+                <i class="material-symbols-rounded tiny ${downloaded}">${icon}</i>
+                <span class="${downloaded}">${file.path.split('/').pop()}</span>
+                ${file.size_mb ? `<span class="grey-text" style="float: right;">${formatSize(file.size_mb)}</span>` : ''}
+            </div>
+        `;
+    });
+    html += '</div>';
+    
+    return html;
+}
+
+function renderDiffusionModelFiles(modelData) {
+    if (!modelData.files && !modelData.checkpoint_files) return '';
+    
+    let html = '<div class="file-list" style="margin-top: 1rem;">';
+    html += '<h6>Model Files</h6>';
+    
+    // Check for checkpoint files (common in diffusion models)
+    if (modelData.checkpoint_files && modelData.checkpoint_files.length > 0) {
+        modelData.checkpoint_files.forEach(file => {
+            const fileSize = file.size_mb || file.size || 0;
+            html += `
+                <div class="file-item" style="padding: 0.5rem 0; border-bottom: 1px solid #eee;">
+                    <i class="material-symbols-rounded tiny green-text">check_circle</i>
+                    <span class="green-text">${file.name || file.path || 'Model File'}</span>
+                    ${fileSize > 0 ? `<span class="grey-text" style="float: right;">${formatSize(fileSize)}</span>` : ''}
+                </div>
+            `;
+        });
+    }
+    
+    // Also check for general files array
+    if (modelData.files && modelData.files.length > 0) {
+        modelData.files.forEach(file => {
+            html += `
+                <div class="file-item" style="padding: 0.5rem 0; border-bottom: 1px solid #eee;">
+                    <i class="material-symbols-rounded tiny green-text">check_circle</i>
+                    <span class="green-text">${file.split('/').pop()}</span>
+                </div>
+            `;
+        });
+    }
+    
+    html += '</div>';
+    return html;
+}
+
+// Refresh functions
+function refreshDiffusionModels() {
+    loadDiffusionModels();
+}
+
+function refreshChatModels() {
+    loadChatModels();
+}
+
+function refreshFaceModels() {
+    loadFaceModels();
+}
+
+function clearDiffusionCache() {
+    if (!confirm('Are you sure you want to clear all loaded diffusion model pipelines?')) {
+        return;
+    }
+    
+    fetch('/v1/models/generation/clear-cache', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => {
+        if (!response.ok) throw new Error('Failed to clear cache');
+        M.toast({html: 'Diffusion model cache cleared!', classes: 'green'});
+        loadDiffusionModels();
+    })
+    .catch(error => {
+        M.toast({html: `Failed to clear cache: ${error.message}`, classes: 'red'});
+    });
+}
+</script>
 {% endblock %}

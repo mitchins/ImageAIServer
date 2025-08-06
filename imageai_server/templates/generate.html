@@ -45,10 +45,7 @@
                         <div class="input-field col s12 m6 l3">
                             <span class="material-symbols-rounded prefix">model_training</span>
                             <select id="model-select">
-                                <option value="flux1-schnell">FLUX.1 Schnell (Fast)</option>
-                                <option value="sdxl">Stable Diffusion XL</option>
-                                <option value="sdxl-turbo">SDXL Turbo (Very Fast)</option>
-                                <option value="qwen-image">Qwen Image</option>
+                                <!-- Models will be populated dynamically -->
                             </select>
                             <label>Model</label>
                         </div>
@@ -194,11 +191,117 @@
 M.FormSelect.init(document.querySelectorAll('select'));
 M.CharacterCounter.init(document.querySelectorAll('textarea[data-length]'));
 M.updateTextFields();
+
+// Load available models
+loadAvailableModels();
 {% endblock %}
 
 {% block scripts %}
 <script>
     let isGenerating = false;
+    let modelMetadata = {};
+    
+    // Model display names
+    const MODEL_NAMES = {
+        'flux1-schnell': 'FLUX.1 Schnell (Fast)',
+        'sdxl': 'Stable Diffusion XL',
+        'sdxl-turbo': 'SDXL Turbo (Very Fast)', 
+        'qwen-image': 'Qwen Image',
+        'sd15-onnx': 'Stable Diffusion 1.5 (ONNX)'
+    };
+    
+    async function loadAvailableModels() {
+        try {
+            const response = await fetch('/v1/models/generation');
+            const data = await response.json();
+            modelMetadata = data.models;
+            
+            const modelSelect = document.getElementById('model-select');
+            modelSelect.innerHTML = '';
+            
+            // Group models by engine
+            const pytorchModels = [];
+            const onnxModels = [];
+            
+            for (const [modelKey, metadata] of Object.entries(modelMetadata)) {
+                if (metadata.engine === 'pytorch') {
+                    pytorchModels.push(modelKey);
+                } else if (metadata.engine === 'onnx') {
+                    onnxModels.push(modelKey);
+                }
+            }
+            
+            // Add PyTorch models
+            if (pytorchModels.length > 0) {
+                const pytorchGroup = document.createElement('optgroup');
+                pytorchGroup.label = 'PyTorch Models (GPU Required)';
+                pytorchModels.forEach(key => {
+                    const option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = MODEL_NAMES[key] || key;
+                    if (key === 'flux1-schnell') option.selected = true; // Default
+                    pytorchGroup.appendChild(option);
+                });
+                modelSelect.appendChild(pytorchGroup);
+            }
+            
+            // Add ONNX models
+            if (onnxModels.length > 0) {
+                const onnxGroup = document.createElement('optgroup');
+                onnxGroup.label = 'ONNX Models (CPU/GPU)';
+                onnxModels.forEach(key => {
+                    const option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = MODEL_NAMES[key] || key;
+                    // Select ONNX as default if no PyTorch models available
+                    if (pytorchModels.length === 0 && key === 'sd15-onnx') {
+                        option.selected = true;
+                    }
+                    onnxGroup.appendChild(option);
+                });
+                modelSelect.appendChild(onnxGroup);
+            }
+            
+            // Reinitialize Materialize select
+            M.FormSelect.init(modelSelect);
+            
+            // Update UI based on selected model
+            updateModelUI();
+            
+        } catch (error) {
+            console.error('Failed to load models:', error);
+            M.toast({html: 'Failed to load available models', classes: 'red'});
+        }
+    }
+    
+    function updateModelUI() {
+        const selectedModel = document.getElementById('model-select').value;
+        const metadata = modelMetadata[selectedModel];
+        if (!metadata) return;
+        
+        // Handle negative prompt visibility
+        const negativePromptRow = document.getElementById('negative-prompt-input').closest('.row');
+        if (metadata.supports_negative_prompt) {
+            negativePromptRow.style.display = 'block';
+            negativePromptRow.style.opacity = '1';
+        } else {
+            negativePromptRow.style.display = 'none';
+        }
+        
+        // Update default dimensions
+        const widthInput = document.getElementById('width-input');
+        const heightInput = document.getElementById('height-input');
+        widthInput.value = metadata.default_resolution;
+        heightInput.value = metadata.default_resolution;
+        
+        // Update min/max attributes
+        widthInput.min = metadata.min_resolution;
+        widthInput.max = metadata.max_resolution;
+        heightInput.min = metadata.min_resolution;
+        heightInput.max = metadata.max_resolution;
+        
+        M.updateTextFields();
+    }
     
     function useExamplePrompt(prompt) {
         const promptInput = document.getElementById('prompt-input');
@@ -214,6 +317,11 @@ M.updateTextFields();
         const prompt = document.getElementById('prompt-input').value.trim();
         if (!prompt) {
             M.toast({html: 'Please enter a prompt', classes: 'red'});
+            return;
+        }
+        
+        // Validate resolution
+        if (!validateResolution()) {
             return;
         }
         
@@ -348,30 +456,33 @@ M.updateTextFields();
         }
     });
     
-    // Update dimensions for common aspect ratios
-    document.getElementById('model-select').addEventListener('change', function() {
-        const model = this.value;
-        const widthInput = document.getElementById('width-input');
-        const heightInput = document.getElementById('height-input');
+    // Handle model selection changes
+    document.getElementById('model-select').addEventListener('change', updateModelUI);
+    
+    // Add resolution validation
+    function validateResolution() {
+        const selectedModel = document.getElementById('model-select').value;
+        const metadata = modelMetadata[selectedModel];
+        if (!metadata) return true;
         
-        // Set optimal dimensions for each model
-        switch(model) {
-            case 'flux1-schnell':
-                widthInput.value = 1024;
-                heightInput.value = 1024;
-                break;
-            case 'sdxl':
-            case 'sdxl-turbo':
-                widthInput.value = 1024;
-                heightInput.value = 1024;
-                break;
-            case 'qwen-image':
-                widthInput.value = 928;
-                heightInput.value = 928;
-                break;
+        const width = parseInt(document.getElementById('width-input').value);
+        const height = parseInt(document.getElementById('height-input').value);
+        
+        if (width > metadata.max_resolution || height > metadata.max_resolution) {
+            M.toast({html: `Resolution too high for ${selectedModel}. Max: ${metadata.max_resolution}x${metadata.max_resolution}`, classes: 'red'});
+            return false;
         }
         
-        M.updateTextFields();
-    });
+        if (width < metadata.min_resolution || height < metadata.min_resolution) {
+            M.toast({html: `Resolution too low for ${selectedModel}. Min: ${metadata.min_resolution}x${metadata.min_resolution}`, classes: 'red'});
+            return false;
+        }
+        
+        return true;
+    }
+    
+    // Add validation to width/height inputs
+    document.getElementById('width-input').addEventListener('change', validateResolution);
+    document.getElementById('height-input').addEventListener('change', validateResolution);
 </script>
 {% endblock %}

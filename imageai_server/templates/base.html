@@ -20,7 +20,7 @@
     <!-- Navigation -->
     <nav class="purple darken-1" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;">
         <div class="nav-wrapper">
-            <a href="/" class="brand-logo left" style="padding-left: 20px;">
+            <a href="/ui/" class="brand-logo left" style="padding-left: 20px;">
                 <img src="/static/icon.png" alt="ImageAI" style="height: 40px; vertical-align: middle; margin-right: 10px;"> 
                 ImageAIServer
             </a>
@@ -29,32 +29,32 @@
             </div>
             <ul class="right hide-on-med-and-down">
                 <li{% if current_page == 'home' %} class="active"{% endif %}>
-                    <a href="/" title="Home">
+                    <a href="/ui/" title="Home">
                         <span class="material-symbols-rounded left">home</span>Home
                     </a>
                 </li>
                 <li{% if current_page == 'models' %} class="active"{% endif %}>
-                    <a href="/models" title="Models">
+                    <a href="/ui/models" title="Models">
                         <span class="material-symbols-rounded left">settings</span>Models
                     </a>
                 </li>
-                <li{% if current_page == 'test' %} class="active"{% endif %}>
-                    <a href="/vision-chat" title="Chat">
+                <li{% if current_page == 'vision-chat' %} class="active"{% endif %}>
+                    <a href="/ui/vision-chat" title="Chat">
                         <span class="material-symbols-rounded left">mms</span>Chat
                     </a>
                 </li>
                 <li{% if current_page == 'compare-faces' %} class="active"{% endif %}>
-                    <a href="/compare-faces" title="Faces">
+                    <a href="/ui/compare-faces" title="Faces">
                         <span class="material-symbols-rounded left">face</span>Faces
                     </a>
                 </li>
                 <li{% if current_page == 'generate' %} class="active"{% endif %}>
-                    <a href="/generate" title="Generate">
+                    <a href="/ui/generate" title="Generate">
                         <span class="material-symbols-rounded left">palette</span>Generate
                     </a>
                 </li>
                 <li{% if current_page == 'docs' %} class="active"{% endif %}>
-                    <a href="/docs" title="API Documentation">
+                    <a href="/ui/docs" title="API Documentation">
                         <span class="material-symbols-rounded left">book</span>Docs
                     </a>
                 </li>
@@ -63,22 +63,22 @@
     </nav>
 
     <ul class="sidenav" id="mobile-nav">
-        <li><a href="/">
+        <li><a href="/ui/">
             <span class="material-symbols-rounded left">home</span>Home
         </a></li>
-        <li><a href="/models">
+        <li><a href="/ui/models">
             <span class="material-symbols-rounded left">settings</span>Models
         </a></li>
-        <li><a href="/vision-chat">
+        <li><a href="/ui/vision-chat">
             <span class="material-symbols-rounded left">mms</span>Chat
         </a></li>
-        <li><a href="/compare-faces">
+        <li><a href="/ui/compare-faces">
             <span class="material-symbols-rounded left">face</span>Faces
         </a></li>
-        <li><a href="/generate">
+        <li><a href="/ui/generate">
             <span class="material-symbols-rounded left">palette</span>Generate
         </a></li>
-        <li><a href="/docs">
+        <li><a href="/ui/docs">
             <span class="material-symbols-rounded left">book</span>Docs
         </a></li>
     </ul>
