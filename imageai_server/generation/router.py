@@ -6,6 +6,7 @@ import torch
 from diffusers import StableDiffusionXLPipeline, AutoPipelineForText2Image, FluxPipeline, DiffusionPipeline
 import numpy as np
 from ..shared.diffusion_model_loader import diffusion_loader
+from .model_variants import get_all_available_models, get_model_families
 
 try:
     import onnxruntime as ort
@@ -264,7 +265,16 @@ def get_generation_models():
         if model_key in MODEL_METADATA and model_key not in available_models:
             available_models[model_key] = MODEL_METADATA[model_key]
     
+    # Add variant-based models
+    variant_models = get_all_available_models()
+    available_models.update(variant_models)
+    
     return {"models": available_models}
+
+@router.get("/v1/models/generation/families")
+def get_generation_model_families():
+    """Get models organized by family with quantization variants."""
+    return {"families": get_model_families()}
 
 @router.get("/v1/models/generation/loaded")
 def get_loaded_models():

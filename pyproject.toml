@@ -41,6 +41,7 @@ dependencies = [
     "optimum>=1.12.0",
     "jinja2>=3.1.2",
     "dghs-imgutils>=0.18.0",
+    "psutil>=5.8.0",
 ]
 
 [project.optional-dependencies]
@@ -76,9 +77,10 @@ Issues = "https://github.com/mitchins/ImageAIServer/issues"
 
 [project.scripts]
 imageaiserver = "imageai_server.__main__:main"
+imageai-generate = "imageai_server.utils.generate_image:main"
 
 [tool.setuptools]
-packages = ["imageai_server", "imageai_server.shared", "imageai_server.multimodal_chat", "imageai_server.face_api", "imageai_server.manage_api", "imageai_server.face_server", "imageai_server.chat_server"]
+packages = ["imageai_server", "imageai_server.shared", "imageai_server.multimodal_chat", "imageai_server.face_api", "imageai_server.manage_api", "imageai_server.face_server", "imageai_server.chat_server", "imageai_server.utils"]
 
 [tool.setuptools.package-data]
 "*" = ["*.html", "*.js", "*.css"]

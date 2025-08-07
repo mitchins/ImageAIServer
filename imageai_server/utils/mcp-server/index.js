@@ -7,6 +7,9 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import fetch from "node-fetch";
+import fs from "fs/promises";
+import path from "path";
+import os from "os";
 
 const server = new Server(
   {
@@ -183,6 +186,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               minimum: 1,
               maximum: 4,
             },
+            output_dir: {
+              type: "string",
+              description: "Directory to save images (default: temp directory)",
+            },
           },
           required: ["prompt"],
         },
@@ -231,7 +238,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     switch (name) {
       case "generate_image": {
-        const { prompt, model, width, height, negative_prompt, n } = args;
+        const { prompt, model, width, height, negative_prompt, n, output_dir } = args;
         
         if (!prompt || typeof prompt !== "string") {
           throw new Error("Prompt is required and must be a string");
@@ -245,17 +252,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           n,
         });
 
+        // Save images to files instead of returning base64
+        const outputPath = output_dir || path.join(os.tmpdir(), 'imageai-mcp');
+        await fs.mkdir(outputPath, { recursive: true });
+        
+        const savedFiles = [];
+        const timestamp = Date.now();
+        const safePrompt = prompt.substring(0, 30).replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        
+        for (let i = 0; i < result.data.length; i++) {
+          const filename = n > 1 
+            ? `${safePrompt}_${timestamp}_${i + 1}.png`
+            : `${safePrompt}_${timestamp}.png`;
+          const filepath = path.join(outputPath, filename);
+          
+          // Decode and save
+          const imageBuffer = Buffer.from(result.data[i].b64_json, 'base64');
+          await fs.writeFile(filepath, imageBuffer);
+          savedFiles.push(filepath);
+        }
+
         return {
           content: [
             {
               type: "text",
-              text: `Generated ${result.data.length} image(s) using model: ${model || "sd15-onnx"}\nPrompt: "${prompt}"${negative_prompt ? `\nNegative prompt: "${negative_prompt}"` : ""}\nDimensions: ${width || 512}x${height || 512}`,
+              text: `✅ Generated ${result.data.length} image(s)\n\n**Model:** ${model || "sd15-onnx"}\n**Prompt:** "${prompt}"${negative_prompt ? `\n**Negative:** "${negative_prompt}"` : ""}\n**Size:** ${width || 512}x${height || 512}\n\n**Saved to:**\n${savedFiles.map(f => `\`${f}\``).join('\n')}\n\n*Files saved directly to disk - no base64 handling needed!*`,
             },
-            ...result.data.map((img, index) => ({
-              type: "image",
-              data: img.b64_json,
-              mimeType: "image/png",
-            })),
           ],
         };
       }

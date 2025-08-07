@@ -1,0 +1,333 @@
+{% extends "base.html" %}
+
+{% block title %}Generate Images - ImageAI Server{% endblock %}
+
+{% block content %}
+<div class="container" style="margin-top: 2rem;">
+    <div class="row">
+        <div class="col s12">
+            <div class="card">
+                <div class="card-content">
+                    <span class="card-title center-align">
+                        <span class="material-symbols-rounded" style="font-size: 2rem; vertical-align: middle; color: #667eea;">auto_awesome</span>
+                        AI Image Generation
+                    </span>
+                    
+                    <!-- Main Input -->
+                    <div class="row">
+                        <div class="input-field col s12">
+                            <span class="material-symbols-rounded prefix">edit_note</span>
+                            <textarea id="prompt-input" class="materialize-textarea" data-length="500" placeholder="Describe the image you want to generate..."></textarea>
+                            <label for="prompt-input">Prompt</label>
+                        </div>
+                    </div>
+                    
+                    <!-- Negative Prompt (Initially Hidden) -->
+                    <div class="row" id="negative-prompt-row" style="display: none;">
+                        <div class="input-field col s12">
+                            <span class="material-symbols-rounded prefix">do_not_disturb_on</span>
+                            <textarea id="negative-prompt-input" class="materialize-textarea" data-length="200" placeholder="Things to avoid in the image..."></textarea>
+                            <label for="negative-prompt-input">Negative Prompt</label>
+                        </div>
+                    </div>
+                    
+                    <!-- Model Selection with Quantization -->
+                    <div class="row">
+                        <div class="input-field col s12 m6">
+                            <span class="material-symbols-rounded prefix">model_training</span>
+                            <select id="model-family-select" onchange="updateQuantizationOptions()">
+                                <option value="" disabled selected>Choose model family</option>
+                                <option value="sd15">Stable Diffusion 1.5</option>
+                                <option value="sdxl">Stable Diffusion XL</option>
+                                <option value="sdxl-turbo">SDXL Turbo</option>
+                                <option value="flux1">FLUX.1 Schnell</option>
+                            </select>
+                            <label>Model Family</label>
+                        </div>
+                        
+                        <div class="input-field col s12 m6">
+                            <span class="material-symbols-rounded prefix">memory</span>
+                            <select id="quantization-select" disabled>
+                                <option value="" disabled selected>Select model first</option>
+                            </select>
+                            <label>Quantization</label>
+                        </div>
+                    </div>
+                    
+                    <!-- Memory requirement display -->
+                    <div class="row">
+                        <div class="col s12">
+                            <div id="memory-info" class="chip" style="display: none;">
+                                <span class="material-symbols-rounded" style="font-size: 1rem; vertical-align: middle;">memory</span>
+                                <span id="memory-text"></span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Generation Parameters -->
+                    <div class="row">
+                        <div class="input-field col s12 m6 l3">
+                            <span class="material-symbols-rounded prefix">counter_1</span>
+                            <input type="number" id="count-input" value="1" min="1" max="4">
+                            <label for="count-input">Count</label>
+                        </div>
+                        
+                        <div class="input-field col s12 m6 l3">
+                            <span class="material-symbols-rounded prefix">straighten</span>
+                            <input type="number" id="width-input" value="512" min="256" max="2048" step="64">
+                            <label for="width-input">Width</label>
+                        </div>
+                        
+                        <div class="input-field col s12 m6 l3">
+                            <span class="material-symbols-rounded prefix">height</span>
+                            <input type="number" id="height-input" value="512" min="256" max="2048" step="64">
+                            <label for="height-input">Height</label>
+                        </div>
+                        
+                        <div class="input-field col s12 m6 l3">
+                            <a class="btn-floating btn-small waves-effect waves-light" onclick="toggleAdvanced()" title="Advanced Settings">
+                                <span class="material-symbols-rounded">tune</span>
+                            </a>
+                        </div>
+                    </div>
+                    
+                    <!-- Action Buttons -->
+                    <div class="row">
+                        <div class="col s12 center-align">
+                            <button id="generate-btn" class="btn-large waves-effect waves-light" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);" onclick="generateImage()">
+                                Generate Image
+                                <span class="material-symbols-rounded right">auto_awesome</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Results Grid -->
+    <div id="results-container" class="row"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let modelFamilies = {};
+    let currentModelId = null;
+    
+    // Model family configurations with available quantizations
+    const MODEL_CONFIG = {
+        "sd15": {
+            "display_name": "Stable Diffusion 1.5",
+            "quantizations": {
+                "fp16": { id: "sd15-fp16", name: "FP16 (Full)", memory: "~4GB", available: false },
+                "onnx-fp16": { id: "sd15-onnx-fp16", name: "ONNX FP16", memory: "~2GB", available: false },
+                "onnx-int8": { id: "sd15-onnx", name: "ONNX INT8", memory: "~500MB", available: true }
+            },
+            "default_size": 512,
+            "supports_negative": true
+        },
+        "sdxl": {
+            "display_name": "Stable Diffusion XL",
+            "quantizations": {
+                "fp16": { id: "sdxl", name: "FP16 (Full)", memory: "~8GB VRAM", available: true },
+                "int8": { id: "sdxl-int8", name: "INT8", memory: "~4GB VRAM", available: false },
+                "onnx-fp16": { id: "sdxl-onnx-fp16", name: "ONNX FP16", memory: "~6GB", available: false },
+                "onnx-int8": { id: "sdxl-onnx-int8", name: "ONNX INT8", memory: "~2GB", available: false }
+            },
+            "default_size": 1024,
+            "supports_negative": true
+        },
+        "sdxl-turbo": {
+            "display_name": "SDXL Turbo",
+            "quantizations": {
+                "fp16": { id: "sdxl-turbo", name: "FP16 (Fast)", memory: "~8GB VRAM", available: true },
+                "onnx": { id: "sdxl-turbo-onnx", name: "ONNX (CPU Compatible)", memory: "~4GB", available: true }
+            },
+            "default_size": 1024,
+            "supports_negative": true
+        },
+        "flux1": {
+            "display_name": "FLUX.1 Schnell",
+            "quantizations": {
+                "fp16": { id: "flux1-schnell", name: "FP16 (Full Quality)", memory: "~12GB VRAM", available: true },
+                "q8": { id: "flux1-q8", name: "Q8 (8-bit)", memory: "~8GB VRAM", available: true },
+                "q4": { id: "flux1-q4", name: "Q4 (4-bit)", memory: "~6GB VRAM", available: true }
+            },
+            "default_size": 1024,
+            "supports_negative": false
+        }
+    };
+    
+    function updateQuantizationOptions() {
+        const familySelect = document.getElementById('model-family-select');
+        const quantSelect = document.getElementById('quantization-select');
+        const memoryInfo = document.getElementById('memory-info');
+        const memoryText = document.getElementById('memory-text');
+        
+        const selectedFamily = familySelect.value;
+        
+        if (!selectedFamily || !MODEL_CONFIG[selectedFamily]) {
+            quantSelect.disabled = true;
+            quantSelect.innerHTML = '<option value="" disabled selected>Select model first</option>';
+            memoryInfo.style.display = 'none';
+            M.FormSelect.init(quantSelect);
+            return;
+        }
+        
+        const config = MODEL_CONFIG[selectedFamily];
+        quantSelect.disabled = false;
+        quantSelect.innerHTML = '';
+        
+        // Add quantization options
+        let hasSelection = false;
+        for (const [key, quant] of Object.entries(config.quantizations)) {
+            if (quant.available) {
+                const option = document.createElement('option');
+                option.value = quant.id;
+                option.textContent = `${quant.name} (${quant.memory})`;
+                if (!hasSelection) {
+                    option.selected = true;
+                    hasSelection = true;
+                    currentModelId = quant.id;
+                    // Update memory display
+                    memoryText.textContent = `Memory: ${quant.memory}`;
+                    memoryInfo.style.display = 'inline-block';
+                }
+                quantSelect.appendChild(option);
+            }
+        }
+        
+        // Add unavailable options as disabled
+        for (const [key, quant] of Object.entries(config.quantizations)) {
+            if (!quant.available) {
+                const option = document.createElement('option');
+                option.value = quant.id;
+                option.textContent = `${quant.name} (${quant.memory}) - Coming Soon`;
+                option.disabled = true;
+                quantSelect.appendChild(option);
+            }
+        }
+        
+        // Update dimensions to defaults for this model
+        document.getElementById('width-input').value = config.default_size;
+        document.getElementById('height-input').value = config.default_size;
+        
+        // Show/hide negative prompt based on model support
+        const negativeRow = document.getElementById('negative-prompt-row');
+        if (config.supports_negative) {
+            negativeRow.style.display = 'block';
+        } else {
+            negativeRow.style.display = 'none';
+        }
+        
+        M.FormSelect.init(quantSelect);
+        M.updateTextFields();
+    }
+    
+    // Update memory display when quantization changes
+    document.addEventListener('DOMContentLoaded', function() {
+        const quantSelect = document.getElementById('quantization-select');
+        quantSelect.addEventListener('change', function() {
+            currentModelId = this.value;
+            const familySelect = document.getElementById('model-family-select');
+            const selectedFamily = familySelect.value;
+            
+            if (selectedFamily && MODEL_CONFIG[selectedFamily]) {
+                const config = MODEL_CONFIG[selectedFamily];
+                for (const quant of Object.values(config.quantizations)) {
+                    if (quant.id === currentModelId) {
+                        document.getElementById('memory-text').textContent = `Memory: ${quant.memory}`;
+                        break;
+                    }
+                }
+            }
+        });
+    });
+    
+    function toggleAdvanced() {
+        const negativeRow = document.getElementById('negative-prompt-row');
+        const familySelect = document.getElementById('model-family-select');
+        const selectedFamily = familySelect.value;
+        
+        if (selectedFamily && MODEL_CONFIG[selectedFamily] && MODEL_CONFIG[selectedFamily].supports_negative) {
+            negativeRow.style.display = negativeRow.style.display === 'none' ? 'block' : 'none';
+        }
+    }
+    
+    async function generateImage() {
+        const prompt = document.getElementById('prompt-input').value.trim();
+        if (!prompt) {
+            M.toast({html: 'Please enter a prompt', classes: 'red'});
+            return;
+        }
+        
+        if (!currentModelId) {
+            M.toast({html: 'Please select a model and quantization', classes: 'red'});
+            return;
+        }
+        
+        const btn = document.getElementById('generate-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<div class="preloader-wrapper small active" style="width: 20px; height: 20px; margin-right: 10px;"><div class="spinner-layer spinner-white-only"><div class="circle-clipper left"><div class="circle"></div></div></div></div>Generating...';
+        
+        const requestBody = {
+            prompt: prompt,
+            model: currentModelId,
+            n: parseInt(document.getElementById('count-input').value),
+            width: parseInt(document.getElementById('width-input').value),
+            height: parseInt(document.getElementById('height-input').value),
+            negative_prompt: document.getElementById('negative-prompt-input').value || ""
+        };
+        
+        try {
+            const response = await fetch('/v1/images/generations', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(requestBody)
+            });
+            
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            
+            const data = await response.json();
+            displayResults(data.data);
+            
+        } catch (error) {
+            M.toast({html: `Generation failed: ${error.message}`, classes: 'red'});
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = 'Generate Image<span class="material-symbols-rounded right">auto_awesome</span>';
+        }
+    }
+    
+    function displayResults(images) {
+        const container = document.getElementById('results-container');
+        container.innerHTML = '';
+        
+        images.forEach((img, index) => {
+            const col = document.createElement('div');
+            col.className = 'col s12 m6 l4';
+            col.innerHTML = `
+                <div class="card">
+                    <div class="card-image">
+                        <img src="data:image/png;base64,${img.b64_json}" alt="Generated image ${index + 1}">
+                        <a class="btn-floating halfway-fab waves-effect waves-light" 
+                           href="data:image/png;base64,${img.b64_json}" 
+                           download="generated_${Date.now()}_${index}.png">
+                            <span class="material-symbols-rounded">download</span>
+                        </a>
+                    </div>
+                </div>
+            `;
+            container.appendChild(col);
+        });
+    }
+    
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        M.FormSelect.init(document.querySelectorAll('select'));
+        M.CharacterCounter.init(document.querySelectorAll('textarea[data-length]'));
+        M.updateTextFields();
+    });
+</script>
+{% endblock %}

@@ -4,6 +4,8 @@ An MCP (Model Context Protocol) server that provides image generation capabiliti
 
 ## Features
 
+- **Direct File Saving**: Images saved to disk - no base64 data in Claude's context!
+- **Token Efficient**: Returns only file paths, not image data
 - **Generate Images**: Create images using various AI models (Stable Diffusion, FLUX, etc.)
 - **Model Selection**: Choose from available models including quantized ONNX versions
 - **Flexible Parameters**: Control image size, model, negative prompts, and batch generation
@@ -28,12 +30,15 @@ export IMAGEAI_SERVER_URL=http://your-server:8001
 
 Add to your Claude Desktop configuration (`claude_desktop_config.json`):
 
+**Mac/Linux:** `~/.config/Claude/claude_desktop_config.json`
+**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+
 ```json
 {
   "mcpServers": {
     "imageai": {
       "command": "node",
-      "args": ["/path/to/ImageAIServer/mcp-server/index.js"],
+      "args": ["/path/to/ImageAIServer/utils/mcp-server/index.js"],
       "env": {
         "IMAGEAI_SERVER_URL": "http://localhost:8001"
       }
@@ -60,11 +65,18 @@ Generate images using AI models.
 - `height` (optional): Image height in pixels (default: 512)
 - `negative_prompt` (optional): Text describing what to avoid
 - `n` (optional): Number of images to generate (1-4, default: 1)
+- `output_dir` (optional): Directory to save images (default: system temp/imageai-mcp)
 
 **Example:**
 ```
 Generate an image of "a serene mountain landscape at sunset" using the sd15-onnx model
 ```
+
+**Output:**
+Images are saved to disk and the tool returns:
+- File paths where images were saved
+- No base64 data (keeps context clean!)
+- Easy to reference saved files later
 
 ### list_models
 
