@@ -298,9 +298,44 @@ def quantize_pytorch_int8(model_key: str, output_dir: Path) -> bool:
                 
             log(f"Applied torchao INT8 weight-only quantization on {device}")
         
-        # Save the model
+        # Save the model with special handling for quantized models
         output_dir.mkdir(parents=True, exist_ok=True)
-        pipe.save_pretrained(str(output_dir))
+        
+        # TorchAO quantized models need special serialization handling
+        if torchao_available:
+            log("Saving quantized model (this may take a while due to weight serialization)...")
+            try:
+                # Save with safe_serialization=False to avoid storage pointer issues
+                pipe.save_pretrained(str(output_dir), safe_serialization=False)
+                log("✅ Saved using PyTorch format (not safetensors due to quantization)")
+            except Exception as save_error:
+                log(f"⚠️ Standard save failed: {save_error}")
+                log("Attempting component-wise save...")
+                
+                # Fallback: save components individually
+                pipe.unet.save_pretrained(output_dir / "unet", safe_serialization=False)
+                pipe.vae.save_pretrained(output_dir / "vae", safe_serialization=False)
+                if hasattr(pipe, 'text_encoder'):
+                    pipe.text_encoder.save_pretrained(output_dir / "text_encoder", safe_serialization=False)
+                if hasattr(pipe, 'text_encoder_2'):
+                    pipe.text_encoder_2.save_pretrained(output_dir / "text_encoder_2", safe_serialization=False)
+                
+                # Copy other files
+                import shutil
+                from transformers.utils import cached_file
+                
+                # Save scheduler config
+                pipe.scheduler.save_config(output_dir)
+                
+                # Save tokenizers if they exist
+                if hasattr(pipe, 'tokenizer'):
+                    pipe.tokenizer.save_pretrained(output_dir / "tokenizer")
+                if hasattr(pipe, 'tokenizer_2'):
+                    pipe.tokenizer_2.save_pretrained(output_dir / "tokenizer_2")
+                    
+                log("✅ Saved using component-wise fallback method")
+        else:
+            pipe.save_pretrained(str(output_dir))
         
         # Save quantization info
         quant_info = {
@@ -309,7 +344,9 @@ def quantize_pytorch_int8(model_key: str, output_dir: Path) -> bool:
             "original_model": config["model_id"],
             "conversion_date": datetime.now().isoformat(),
             "requires_bitsandbytes": False,
-            "device": "cuda" if torch.cuda.is_available() else "cpu"
+            "device": "cuda" if torch.cuda.is_available() else "cpu",
+            "serialization_format": "pytorch" if torchao_available else "safetensors",
+            "notes": "TorchAO quantized models saved in PyTorch format due to storage compatibility"
         }
         
         with open(output_dir / "quantization_info.json", "w") as f:
@@ -317,6 +354,7 @@ def quantize_pytorch_int8(model_key: str, output_dir: Path) -> bool:
         
         log(f"✅ Saved INT8 model to {output_dir}")
         log(f"   Method: {'torchao' if torchao_available else 'pytorch_native'}")
+        log(f"   Format: {'PyTorch' if torchao_available else 'SafeTensors'}")
         log(f"   No BitsAndBytes dependency required!")
         return True
         
