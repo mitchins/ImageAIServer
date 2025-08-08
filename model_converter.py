@@ -214,7 +214,7 @@ def quantize_pytorch_int8(model_key: str, output_dir: Path) -> bool:
     log(f"Quantizing {config['name']} to PyTorch INT8...")
     
     try:
-        # Use torchao for clean INT8 quantization without BitsAndBytes
+        # Check for required dependencies
         try:
             import torchao
             from torchao.quantization import quantize_, int8_weight_only
@@ -223,6 +223,14 @@ def quantize_pytorch_int8(model_key: str, output_dir: Path) -> bool:
         except ImportError:
             torchao_available = False
             log("⚠️  torchao not available. Install with: pip install torchao")
+            
+        # Check for accelerate (needed for device_map and memory-efficient loading)
+        try:
+            import accelerate
+            log(f"✅ accelerate available (version: {accelerate.__version__})")
+        except ImportError:
+            log("⚠️  accelerate not available. Install with: pip install accelerate")
+            log("   accelerate is needed for memory-efficient model loading")
             
         if not torchao_available:
             # Alternative: Use PyTorch's native quantization (works on CUDA)
@@ -291,16 +299,42 @@ def quantize_pytorch_int8(model_key: str, output_dir: Path) -> bool:
                 supports_bf16 = False
             
             log(f"Loading model with low_cpu_mem_usage=True and {dtype} precision")
-            pipe = pipeline_class.from_pretrained(
-                config["model_id"],
-                torch_dtype=dtype,
-                use_safetensors=True,
-                low_cpu_mem_usage=True,  # Load directly to device to save memory
-                device_map="auto" if device == "cuda" else None
-            )
+            
+            # FLUX.1 doesn't support device_map="auto", use different loading strategy
+            if "flux" in model_key.lower():
+                log("FLUX.1 detected - using balanced device mapping strategy")
+                try:
+                    pipe = pipeline_class.from_pretrained(
+                        config["model_id"],
+                        torch_dtype=dtype,
+                        use_safetensors=True,
+                        low_cpu_mem_usage=True,
+                        device_map="balanced"  # FLUX.1 supports balanced but not auto
+                    )
+                except Exception as e:
+                    log(f"Balanced device map failed ({e}), trying sequential loading...")
+                    pipe = pipeline_class.from_pretrained(
+                        config["model_id"],
+                        torch_dtype=dtype,
+                        use_safetensors=True,
+                        low_cpu_mem_usage=True
+                        # No device_map for FLUX.1 - load normally then move to device
+                    )
+            else:
+                # Standard models support device_map="auto"
+                pipe = pipeline_class.from_pretrained(
+                    config["model_id"],
+                    torch_dtype=dtype,
+                    use_safetensors=True,
+                    low_cpu_mem_usage=True,
+                    device_map="auto" if device == "cuda" else None
+                )
             
             # Move to appropriate device if not already there
-            if device == "cuda" and not next(pipe.unet.parameters()).is_cuda:
+            # FLUX.1 uses 'transformer' instead of 'unet'
+            main_component = pipe.transformer if hasattr(pipe, 'transformer') else pipe.unet
+            if device == "cuda" and not next(main_component.parameters()).is_cuda:
+                log(f"Moving pipeline to {device}...")
                 pipe = pipe.to(device)
             
             # Enable memory-efficient attention if available
@@ -333,8 +367,10 @@ def quantize_pytorch_int8(model_key: str, output_dir: Path) -> bool:
                 memory_before = torch.cuda.memory_allocated() / 1024**3
                 log(f"  📊 GPU Memory before quantization: {memory_before:.2f}GB")
             
-            # Quantize UNet (largest component) - this is where FP32 inflation might happen
-            log("  🔧 Quantizing UNet (checking for FP32 inflation)...")
+            # Quantize main component (UNet for SD models, Transformer for FLUX.1)
+            component_name = "Transformer" if hasattr(pipe, 'transformer') else "UNet"
+            main_component = pipe.transformer if hasattr(pipe, 'transformer') else pipe.unet
+            log(f"  🔧 Quantizing {component_name} (checking for FP32 inflation)...")
             
             # TorchAO may temporarily convert FP16 -> FP32 -> INT8
             # Monitor memory spike during this step
@@ -346,9 +382,9 @@ def quantize_pytorch_int8(model_key: str, output_dir: Path) -> bool:
                 # Try TorchAO quantization with memory monitoring and mixed precision
                 if use_amp:
                     with torch.cuda.amp.autocast(dtype=torch.bfloat16):
-                        quantize_(pipe.unet, int8_weight_only())
+                        quantize_(main_component, int8_weight_only())
                 else:
-                    quantize_(pipe.unet, int8_weight_only())
+                    quantize_(main_component, int8_weight_only())
                 
                 if torch.cuda.is_available():
                     memory_peak = torch.cuda.max_memory_allocated() / 1024**3
@@ -367,16 +403,22 @@ def quantize_pytorch_int8(model_key: str, output_dir: Path) -> bool:
                 log(f"  🔄 Falling back to CPU quantization then GPU transfer...")
                 
                 # Fallback: Move to CPU, quantize, then move back
-                original_device = next(pipe.unet.parameters()).device
-                pipe.unet = pipe.unet.to("cpu")
+                original_device = next(main_component.parameters()).device
+                main_component_cpu = main_component.to("cpu")
                 gc.collect()
                 torch.cuda.empty_cache()
                 
                 # Quantize on CPU (no memory constraints)
-                quantize_(pipe.unet, int8_weight_only())
+                quantize_(main_component_cpu, int8_weight_only())
                 
                 # Move quantized model back to GPU
-                pipe.unet = pipe.unet.to(original_device)
+                main_component_gpu = main_component_cpu.to(original_device)
+                # Update the pipeline component
+                if hasattr(pipe, 'transformer'):
+                    pipe.transformer = main_component_gpu
+                else:
+                    pipe.unet = main_component_gpu
+                    
                 log(f"  ✅ CPU quantization completed, moved back to {original_device}")
             
             gc.collect()
