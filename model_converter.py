@@ -173,13 +173,13 @@ image.save("output.png")
 ## Citation
 
 ```bibtex
-@misc{{{ model_key }}-{{ backend }}-{{ quantization|lower }},
-  title = {{ "{" }}{{ model_name }} {{ backend_display }} {{ quantization }}{{ "}" }},
-  author = {ImageAI Server Contributors},
-  year = {2024},
-  publisher = {HuggingFace},
-  url = {https://huggingface.co/{{ repo_name }}}
-}
+@misc{{"{"}}{{ model_key }}-{{ backend }}-{{ quantization|lower }},
+  title = {{"{"}}{{ model_name }} {{ backend_display }} {{ quantization }}{{"}"}}
+  author = {{"{"}}ImageAI Server Contributors{{"}"}}
+  year = {{"{"}}2024{{"}"}}
+  publisher = {{"{"}}HuggingFace{{"}"}}
+  url = {{"{"}}https://huggingface.co/{{ repo_name }}{{"}"}}
+{{"}"}}
 ```
 
 ---
