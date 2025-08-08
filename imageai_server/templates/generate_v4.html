@@ -1,0 +1,488 @@
+{% extends "base.html" %}
+
+{% block title %}Generate Images - ImageAI Server{% endblock %}
+
+{% block content %}
+<div class="container" style="margin-top: 2rem;">
+    <div class="row">
+        <div class="col s12">
+            <div class="card">
+                <div class="card-content">
+                    <span class="card-title center-align">
+                        <span class="material-symbols-rounded" style="font-size: 2rem; vertical-align: middle; color: #667eea;">auto_awesome</span>
+                        AI Image Generation
+                    </span>
+                    
+                    <!-- Main Input -->
+                    <div class="row">
+                        <div class="input-field col s12">
+                            <span class="material-symbols-rounded prefix">edit_note</span>
+                            <textarea id="prompt-input" class="materialize-textarea" data-length="500" placeholder="Describe the image you want to generate..."></textarea>
+                            <label for="prompt-input">Prompt</label>
+                        </div>
+                    </div>
+                    
+                    <!-- Split Dropdown Approach: [Model-Backend] → [Quantization] -->
+                    <div class="row">
+                        <div class="input-field col s12 m6">
+                            <span class="material-symbols-rounded prefix">psychology</span>
+                            <select id="model-backend-select" onchange="loadQuantizationOptions()">
+                                <option value="" disabled selected>Choose model and backend</option>
+                            </select>
+                            <label>Model - Backend</label>
+                        </div>
+                        
+                        <div class="input-field col s12 m6">
+                            <span class="material-symbols-rounded prefix">tune</span>
+                            <select id="quantization-select" disabled onchange="finalizeSelection()">
+                                <option value="" disabled selected>Select model first</option>
+                            </select>
+                            <label>Quantization</label>
+                        </div>
+                    </div>
+                    
+                    <!-- Model info display -->
+                    <div class="row" id="model-info-row" style="display: none;">
+                        <div class="col s12">
+                            <div class="card-panel" style="background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); margin: 0;">
+                                <div class="row valign-wrapper" style="margin-bottom: 0;">
+                                    <div class="col s12 m4">
+                                        <span class="chip" style="font-weight: 500;">
+                                            <span class="material-symbols-rounded" style="font-size: 1rem; vertical-align: middle;">memory</span>
+                                            <span id="memory-text">Memory: Unknown</span>
+                                        </span>
+                                    </div>
+                                    <div class="col s12 m8">
+                                        <span id="description-text" class="grey-text text-darken-2" style="font-style: italic;"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Negative Prompt (conditionally shown) -->
+                    <div class="row" id="negative-prompt-row" style="display: none;">
+                        <div class="input-field col s12">
+                            <span class="material-symbols-rounded prefix">do_not_disturb_on</span>
+                            <textarea id="negative-prompt-input" class="materialize-textarea" data-length="200" placeholder="Things to avoid in the image..."></textarea>
+                            <label for="negative-prompt-input">Negative Prompt</label>
+                        </div>
+                    </div>
+                    
+                    <!-- Generation Parameters -->
+                    <div class="row">
+                        <div class="input-field col s6 m3">
+                            <span class="material-symbols-rounded prefix">counter_1</span>
+                            <input type="number" id="count-input" value="1" min="1" max="4">
+                            <label for="count-input">Count</label>
+                        </div>
+                        
+                        <div class="input-field col s6 m3">
+                            <span class="material-symbols-rounded prefix">straighten</span>
+                            <input type="number" id="width-input" value="512" min="256" max="2048" step="64">
+                            <label for="width-input">Width</label>
+                        </div>
+                        
+                        <div class="input-field col s6 m3">
+                            <span class="material-symbols-rounded prefix">height</span>
+                            <input type="number" id="height-input" value="512" min="256" max="2048" step="64">
+                            <label for="height-input">Height</label>
+                        </div>
+                        
+                        <div class="input-field col s6 m3 center-align">
+                            <button class="btn btn-small waves-effect waves-light" onclick="setOptimalSize()" title="Set optimal size for selected model">
+                                <span class="material-symbols-rounded left">auto_fix_high</span>
+                                Optimal
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Action Buttons -->
+                    <div class="row">
+                        <div class="col s12 center-align">
+                            <button id="generate-btn" class="btn-large waves-effect waves-light disabled" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);" onclick="generateImage()">
+                                Generate Image
+                                <span class="material-symbols-rounded right">auto_awesome</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Results Grid -->
+    <div id="results-container" class="row"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let modelConfig = null;
+    let currentModelBackend = null;  // Stores selected [model, backend]
+    let currentSelection = null;     // Stores final [model, backend, quantization]
+    
+    // Random example prompts to pre-fill for lazy users
+    const EXAMPLE_PROMPTS = [
+        "A serene mountain landscape at golden hour with a crystal clear lake reflecting the sky",
+        "Cozy coffee shop interior with warm lighting, books on wooden shelves, and steaming mugs",
+        "Futuristic cyberpunk cityscape at night with neon lights and flying vehicles",
+        "Cute robot sitting in a garden surrounded by colorful flowers and butterflies",
+        "Majestic dragon perched on a medieval castle tower under a starry sky",
+        "Abstract geometric composition with vibrant colors and flowing shapes",
+        "Vintage steam locomotive crossing a stone bridge over a misty valley",
+        "Magical forest with glowing mushrooms and ethereal light filtering through trees",
+        "Professional portrait of a confident person in modern business attire",
+        "Delicious gourmet meal beautifully plated on rustic wooden table",
+        "Peaceful beach scene with gentle waves, seashells, and a setting sun",
+        "Urban street art mural featuring bold colors and dynamic graffiti design"
+    ];
+    
+    // Load model configuration from backend
+    async function loadModelConfig() {
+        try {
+            const response = await fetch('/v1/models/generation/ui-config');
+            if (!response.ok) throw new Error('Failed to load model config');
+            
+            modelConfig = await response.json();
+            populateModelBackendSelect();
+            
+        } catch (error) {
+            console.error('Failed to load model config:', error);
+            M.toast({html: 'Failed to load model configuration', classes: 'red'});
+        }
+    }
+    
+    function populateModelBackendSelect() {
+        const select = document.getElementById('model-backend-select');
+        select.innerHTML = '<option value="" disabled selected>Choose model and backend</option>';
+        
+        if (!modelConfig) return;
+        
+        // Flatten into [Model - Backend] options
+        const options = [];
+        
+        for (const [modelKey, modelData] of Object.entries(modelConfig)) {
+            for (const [backendKey, backendData] of Object.entries(modelData.backends)) {
+                options.push({
+                    value: `${modelKey}:${backendKey}`,
+                    display: `${modelData.display_name} - ${backendData.display_name}`,
+                    quantCount: Object.keys(backendData.quantizations).length,
+                    modelData: modelData,
+                    backendData: backendData
+                });
+            }
+        }
+        
+        // Sort by model name, then backend
+        options.sort((a, b) => a.display.localeCompare(b.display));
+        
+        for (const option of options) {
+            const optionEl = document.createElement('option');
+            optionEl.value = option.value;
+            // Show number of quantization options available
+            optionEl.textContent = `${option.display} (${option.quantCount} variants)`;
+            select.appendChild(optionEl);
+        }
+        
+        M.FormSelect.init(select);
+    }
+    
+    function loadQuantizationOptions() {
+        const modelBackendSelect = document.getElementById('model-backend-select');
+        const quantSelect = document.getElementById('quantization-select');
+        const generateBtn = document.getElementById('generate-btn');
+        
+        const selected = modelBackendSelect.value;
+        if (!selected) {
+            resetQuantizationSelect();
+            return;
+        }
+        
+        const [modelKey, backendKey] = selected.split(':');
+        currentModelBackend = { model: modelKey, backend: backendKey };
+        
+        const modelData = modelConfig[modelKey];
+        const backendData = modelData.backends[backendKey];
+        
+        // Populate quantization dropdown with available options for this model-backend combo
+        quantSelect.disabled = false;
+        quantSelect.innerHTML = '<option value="" disabled selected>Choose quantization level</option>';
+        
+        const quantizations = Object.entries(backendData.quantizations);
+        
+        // Sort quantizations by memory usage (highest to lowest quality)
+        quantizations.sort((a, b) => {
+            const memoryOrder = { 'fp16': 0, 'q8': 1, 'q4': 2, 'int8': 3, 'default': 1.5 };
+            return (memoryOrder[a[0]] || 999) - (memoryOrder[b[0]] || 999);
+        });
+        
+        let hasDefault = false;
+        let availableCount = 0;
+        let totalCount = 0;
+        
+        for (const [quantKey, quantData] of quantizations) {
+            const option = document.createElement('option');
+            option.value = quantKey;
+            
+            totalCount++;
+            
+            // Rich display with memory and availability
+            let displayText = quantData.display_name;
+            if (quantData.memory) {
+                displayText += ` - ${quantData.memory}`;
+            }
+            
+            // Handle availability
+            if (quantData.available) {
+                option.textContent = displayText;
+                option.title = quantData.description; // Tooltip
+                availableCount++;
+                
+                // Select the first available one as default
+                if (!hasDefault) {
+                    option.selected = true;
+                    hasDefault = true;
+                }
+            } else {
+                option.textContent = displayText + ' (Coming Soon)';
+                option.title = quantData.description + ' - Not yet implemented';
+                option.disabled = true;
+                option.style.color = '#999';
+                option.style.fontStyle = 'italic';
+            }
+            
+            quantSelect.appendChild(option);
+        }
+        
+        M.FormSelect.init(quantSelect);
+        
+        // If there's a default selection, finalize it
+        if (hasDefault) {
+            finalizeSelection();
+        }
+        
+        // Show status of available vs total quantizations
+        const statusMsg = availableCount === totalCount 
+            ? `Loaded ${availableCount} quantization options`
+            : `Loaded ${availableCount}/${totalCount} quantization options (${totalCount - availableCount} coming soon)`;
+        
+        M.toast({html: statusMsg, classes: 'blue', displayLength: 3000});
+    }
+    
+    function resetQuantizationSelect() {
+        const quantSelect = document.getElementById('quantization-select');
+        const generateBtn = document.getElementById('generate-btn');
+        
+        quantSelect.disabled = true;
+        quantSelect.innerHTML = '<option value="" disabled selected>Select model first</option>';
+        M.FormSelect.init(quantSelect);
+        
+        hideModelInfo();
+        generateBtn.classList.add('disabled');
+        currentModelBackend = null;
+        currentSelection = null;
+    }
+    
+    function finalizeSelection() {
+        const quantSelect = document.getElementById('quantization-select');
+        const generateBtn = document.getElementById('generate-btn');
+        
+        if (!currentModelBackend || !quantSelect.value) {
+            hideModelInfo();
+            generateBtn.classList.add('disabled');
+            return;
+        }
+        
+        const quantKey = quantSelect.value;
+        currentSelection = {
+            model: currentModelBackend.model,
+            backend: currentModelBackend.backend,
+            quantization: quantKey
+        };
+        
+        const modelData = modelConfig[currentSelection.model];
+        const quantData = modelData.backends[currentSelection.backend].quantizations[quantKey];
+        
+        // Update UI with selected model info
+        document.getElementById('memory-text').textContent = `Memory: ${quantData.memory}`;
+        document.getElementById('description-text').textContent = quantData.description;
+        
+        // Show model info panel
+        document.getElementById('model-info-row').style.display = 'block';
+        
+        // Configure negative prompt visibility
+        const negativeRow = document.getElementById('negative-prompt-row');
+        if (modelData.supports_negative_prompt) {
+            negativeRow.style.display = 'block';
+        } else {
+            negativeRow.style.display = 'none';
+            document.getElementById('negative-prompt-input').value = '';
+        }
+        
+        // Set optimal dimensions for this model
+        updateDimensionInputs(modelData);
+        
+        // Enable generate button
+        generateBtn.classList.remove('disabled');
+        
+        console.log('Final selection:', currentSelection);
+    }
+    
+    function updateDimensionInputs(modelData) {
+        const widthInput = document.getElementById('width-input');
+        const heightInput = document.getElementById('height-input');
+        
+        // Set values to model defaults
+        widthInput.value = modelData.default_resolution;
+        heightInput.value = modelData.default_resolution;
+        
+        // Update constraints
+        widthInput.min = modelData.min_resolution;
+        widthInput.max = modelData.max_resolution;
+        heightInput.min = modelData.min_resolution;
+        heightInput.max = modelData.max_resolution;
+        
+        M.updateTextFields();
+    }
+    
+    function hideModelInfo() {
+        document.getElementById('model-info-row').style.display = 'none';
+        document.getElementById('negative-prompt-row').style.display = 'none';
+    }
+    
+    function setOptimalSize() {
+        if (!currentSelection) {
+            M.toast({html: 'Please select a model first', classes: 'red'});
+            return;
+        }
+        
+        const modelData = modelConfig[currentSelection.model];
+        const optimal = modelData.default_resolution;
+        
+        document.getElementById('width-input').value = optimal;
+        document.getElementById('height-input').value = optimal;
+        M.updateTextFields();
+        
+        M.toast({html: `Set to optimal ${optimal}×${optimal} for ${modelData.display_name}`, classes: 'green'});
+    }
+    
+    async function generateImage() {
+        const prompt = document.getElementById('prompt-input').value.trim();
+        if (!prompt) {
+            M.toast({html: 'Please enter a prompt', classes: 'red'});
+            return;
+        }
+        
+        if (!currentSelection) {
+            M.toast({html: 'Please select a model and quantization', classes: 'red'});
+            return;
+        }
+        
+        const btn = document.getElementById('generate-btn');
+        const originalContent = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<div class="preloader-wrapper small active" style="width: 20px; height: 20px; margin-right: 10px;"><div class="spinner-layer spinner-white-only"><div class="circle-clipper left"><div class="circle"></div></div></div></div>Generating...';
+        
+        // Build model ID for API using MODEL-BACKEND:QUANT format
+        const modelId = `${currentSelection.model}-${currentSelection.backend}:${currentSelection.quantization}`;
+        
+        const requestBody = {
+            prompt: prompt,
+            model: modelId,
+            n: parseInt(document.getElementById('count-input').value),
+            width: parseInt(document.getElementById('width-input').value),
+            height: parseInt(document.getElementById('height-input').value),
+            negative_prompt: document.getElementById('negative-prompt-input').value || ""
+        };
+        
+        try {
+            const response = await fetch('/v1/images/generations', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(requestBody)
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || `HTTP ${response.status}`);
+            }
+            
+            const data = await response.json();
+            displayResults(data.data, data.created);
+            
+        } catch (error) {
+            console.error('Generation error:', error);
+            M.toast({html: `Generation failed: ${error.message}`, classes: 'red', displayLength: 4000});
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalContent;
+        }
+    }
+    
+    function displayResults(images, createdTimestamp) {
+        const container = document.getElementById('results-container');
+        container.innerHTML = '';
+        
+        // Calculate generation time
+        const generationTime = createdTimestamp ? new Date(createdTimestamp * 1000).toLocaleString() : 'Unknown';
+        
+        images.forEach((img, index) => {
+            const col = document.createElement('div');
+            col.className = 'col s12 m6 l4';
+            
+            const modelName = modelConfig[currentSelection.model].display_name;
+            const backendName = modelConfig[currentSelection.model].backends[currentSelection.backend].display_name;
+            const quantName = modelConfig[currentSelection.model].backends[currentSelection.backend].quantizations[currentSelection.quantization].display_name;
+            
+            col.innerHTML = `
+                <div class="card">
+                    <div class="card-image">
+                        <img src="data:image/png;base64,${img.b64_json}" alt="Generated image ${index + 1}" class="responsive-img">
+                        <a class="btn-floating halfway-fab waves-effect waves-light blue" 
+                           href="data:image/png;base64,${img.b64_json}" 
+                           download="generated_${Date.now()}_${index}.png"
+                           style="display: flex; align-items: center; justify-content: center;">
+                            <span class="material-symbols-rounded">download</span>
+                        </a>
+                    </div>
+                    <div class="card-content">
+                        <p class="grey-text text-darken-1" style="font-size: 0.8rem; margin: 0;">
+                            <strong>${modelName}</strong><br>
+                            ${backendName} • ${quantName}<br>
+                            <span style="font-size: 0.7rem;">Generated: ${generationTime}</span>
+                        </p>
+                    </div>
+                </div>
+            `;
+            container.appendChild(col);
+        });
+        
+        // Smooth scroll to results
+        if (images.length > 0) {
+            container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            M.toast({html: `Generated ${images.length} image(s)!`, classes: 'green'});
+        }
+    }
+    
+    function setRandomPrompt() {
+        const promptInput = document.getElementById('prompt-input');
+        const randomPrompt = EXAMPLE_PROMPTS[Math.floor(Math.random() * EXAMPLE_PROMPTS.length)];
+        promptInput.value = randomPrompt;
+        M.textareaAutoResize(promptInput);
+        M.updateTextFields();
+    }
+    
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        M.FormSelect.init(document.querySelectorAll('select'));
+        M.CharacterCounter.init(document.querySelectorAll('textarea[data-length]'));
+        M.updateTextFields();
+        
+        // Pre-fill with random prompt for lazy users
+        setRandomPrompt();
+        
+        loadModelConfig();
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,165 @@
+models:
+  sd15:
+    name: "Stable Diffusion 1.5"
+    description: "Classic diffusion model, great for general use"
+    supports_negative_prompt: true
+    default_resolution: 512
+    min_resolution: 256
+    max_resolution: 768
+    backends:
+      pytorch:
+        base_model: "runwayml/stable-diffusion-v1-5"
+        quantizations:
+          fp16:
+            memory: "~4GB VRAM"
+            description: "Full precision, best quality"
+            available: true
+          q8:
+            memory: "~1.8GB"
+            description: "GGUF Q8 quantized, 99% quality retention"
+            available: true
+            model_path: "second-state/stable-diffusion-v1-5-GGUF"
+            file_name: "stable-diffusion-v1-5-pruned-emaonly-Q8_0.gguf"
+            format: "gguf"
+          q4:
+            memory: "~1.6GB"
+            description: "GGUF Q4_1 quantized, very memory efficient"
+            available: true
+            model_path: "second-state/stable-diffusion-v1-5-GGUF"
+            file_name: "stable-diffusion-v1-5-pruned-emaonly-Q4_1.gguf"
+            format: "gguf"
+      onnx:
+        base_model: "Mitchins/sd15-onnx-fp16"
+        quantizations:
+          fp16:
+            memory: "~2GB"
+            description: "ONNX optimized FP16, 50% memory reduction"
+            available: true
+            model_path: "Mitchins/sd15-onnx-fp16"
+
+  sdxl:
+    name: "Stable Diffusion XL"
+    description: "High-quality large diffusion model"
+    supports_negative_prompt: true
+    default_resolution: 1024
+    min_resolution: 512
+    max_resolution: 1536
+    backends:
+      pytorch:
+        base_model: "stabilityai/stable-diffusion-xl-base-1.0"
+        quantizations:
+          fp16:
+            memory: "~8GB VRAM"
+            description: "Full quality, GPU required"
+            available: true
+          q8:
+            memory: "~5GB"
+            description: "GGUF Q8 quantized, 99% quality retention"
+            available: true
+            model_path: "gpustack/stable-diffusion-xl-base-1.0-GGUF"
+            file_name: "sd_xl_base_1.0_Q8_0.gguf"
+            format: "gguf"
+          q4:
+            memory: "~4GB"
+            description: "GGUF Q4_1 quantized, recommended for SDXL"
+            available: true
+            model_path: "gpustack/stable-diffusion-xl-base-1.0-GGUF"
+            file_name: "sd_xl_base_1.0_Q4_1.gguf"
+            format: "gguf"
+      onnx:
+        base_model: "Mitchins/sdxl-onnx-fp16"
+        quantizations:
+          fp16:
+            memory: "~6GB"
+            description: "ONNX optimized FP16, 50% memory reduction"
+            available: true
+            model_path: "Mitchins/sdxl-onnx-fp16"
+
+  sdxl-turbo:
+    name: "SDXL Turbo"
+    description: "Fast SDXL variant, fewer steps needed"
+    supports_negative_prompt: true
+    default_resolution: 1024
+    min_resolution: 512
+    max_resolution: 1024
+    backends:
+      pytorch:
+        base_model: "stabilityai/sdxl-turbo"
+        quantizations:
+          fp16:
+            memory: "~8GB VRAM"
+            description: "Fast generation, fewer steps"
+            available: true
+      onnx:
+        base_model: "Mitchins/sdxl-turbo-onnx-fp16"
+        quantizations:
+          fp16:
+            memory: "~5GB"
+            description: "ONNX optimized FP16, fast generation"
+            available: true
+            model_path: "Mitchins/sdxl-turbo-onnx-fp16"
+
+  flux1:
+    name: "FLUX.1 Schnell"
+    description: "Excellent for complex artistic prompts"
+    supports_negative_prompt: false
+    default_resolution: 1024
+    min_resolution: 256
+    max_resolution: 1024
+    backends:
+      pytorch:
+        base_model: "black-forest-labs/FLUX.1-schnell"
+        quantizations:
+          fp16:
+            memory: "~12GB VRAM"
+            description: "Best quality for complex artistic prompts"
+            available: true
+          q8:
+            memory: "~12.7GB"
+            description: "GGUF Q8 quantized, 99% FP16 quality"
+            available: true
+            model_path: "city96/FLUX.1-schnell-gguf"
+            file_name: "flux1-schnell-Q8_0.gguf"
+            format: "gguf"
+          q4:
+            memory: "~7.5GB"
+            description: "GGUF Q4_1 quantized, excellent memory efficiency"
+            available: true
+            model_path: "city96/FLUX.1-schnell-gguf"
+            file_name: "flux1-schnell-Q4_1.gguf"
+            format: "gguf"
+
+# Runtime mapping - how legacy model IDs map to config
+model_id_mapping:
+  # Legacy model IDs for backward compatibility
+  "sd15": ["sd15", "pytorch", "fp16"]
+  "sd15-q8": ["sd15", "pytorch", "q8"]
+  "sd15-q4": ["sd15", "pytorch", "q4"]
+  "sd15-onnx": ["sd15", "onnx", "fp16"]
+  "sdxl": ["sdxl", "pytorch", "fp16"]
+  "sdxl-q8": ["sdxl", "pytorch", "q8"] 
+  "sdxl-q4": ["sdxl", "pytorch", "q4"]
+  "sdxl-onnx": ["sdxl", "onnx", "fp16"]
+  "sdxl-turbo": ["sdxl-turbo", "pytorch", "fp16"]
+  "sdxl-turbo-onnx": ["sdxl-turbo", "onnx", "fp16"]
+  "flux1-schnell": ["flux1", "pytorch", "fp16"]
+  "flux1-q8": ["flux1", "pytorch", "q8"]
+  "flux1-q4": ["flux1", "pytorch", "q4"]
+
+# UI display configuration
+ui_config:
+  backend_display:
+    pytorch: "PyTorch (GPU)"
+    onnx: "ONNX (CPU/GPU)"
+  
+  quantization_display:
+    fp16: "FP16"
+    q8: "Q8 (8-bit)"
+    q4: "Q4 (4-bit)"
+
+  default_selections:
+    # Prefer models with good memory/quality balance
+    preferred_models:
+      - ["sd15", "onnx", "fp16"]      # Best CPU/GPU balance (2GB memory)
+      - ["flux1", "pytorch", "q8"]    # Good GPU balance
+      - ["sdxl", "pytorch", "fp16"]   # High-end GPU

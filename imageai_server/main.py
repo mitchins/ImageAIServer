@@ -87,7 +87,7 @@ async def ui_models(request: Request):
 @app.get("/ui/generate", response_class=HTMLResponse, include_in_schema=False)
 async def ui_generate(request: Request):
     """Generate images UI."""
-    return templates.TemplateResponse("generate.html", {
+    return templates.TemplateResponse("generate_v4.html", {
         "request": request,
         "current_page": "generate"
     })
