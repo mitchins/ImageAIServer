@@ -114,7 +114,7 @@ def get_sdxl_turbo():
         _sdxl_turbo.enable_attention_slicing()
     return _sdxl_turbo
 
-def get_sd15_onnx_fp16():
+def get_sd15_onnx_fp32():
     global _sd15_onnx
     if _sd15_onnx is None:
         if not ONNX_AVAILABLE:
@@ -122,15 +122,14 @@ def get_sd15_onnx_fp16():
                 status_code=503,
                 detail="ONNX is not available. Install onnxruntime to use ONNX models."
             )
-        # ORTStableDiffusionPipeline expects a single provider string
         provider = "CUDAExecutionProvider" if torch.cuda.is_available() else "CPUExecutionProvider"
         _sd15_onnx = OnnxStableDiffusionPipeline.from_pretrained(
-            "Mitchins/sd15-onnx-fp16",
+            "Mitchins/sd15-onnx-cpu",
             provider=provider
         )
     return _sd15_onnx
 
-def get_sdxl_onnx_fp16():
+def get_sdxl_onnx_fp32():
     global _sdxl_onnx
     if _sdxl_onnx is None:
         if not ONNX_AVAILABLE or OnnxStableDiffusionXLPipeline is None:
@@ -139,26 +138,13 @@ def get_sdxl_onnx_fp16():
                 detail="ONNX SDXL is not available. Install optimum[onnxruntime] to use ONNX SDXL models."
             )
         provider = "CUDAExecutionProvider" if torch.cuda.is_available() else "CPUExecutionProvider"
-        
-        # Try local working model first, fallback to HuggingFace
-        import os
-        from pathlib import Path
-        local_model_path = Path(__file__).parent.parent.parent / "onnx_models_fixed" / "sdxl-onnx-fp16-fixed"
-        if local_model_path.exists():
-            print(f"🔧 Using local SDXL ONNX model: {local_model_path}")
-            _sdxl_onnx = OnnxStableDiffusionXLPipeline.from_pretrained(
-                str(local_model_path),
-                provider=provider
-            )
-        else:
-            print("⚠️  Local model not found, trying HuggingFace (may have type mismatch issues)")
-            _sdxl_onnx = OnnxStableDiffusionXLPipeline.from_pretrained(
-                "Mitchins/sdxl-onnx-fp16",
-                provider=provider
-            )
+        _sdxl_onnx = OnnxStableDiffusionXLPipeline.from_pretrained(
+            "Mitchins/sdxl-onnx-cpu",
+            provider=provider
+        )
     return _sdxl_onnx
 
-def get_sdxl_turbo_onnx_fp16():
+def get_sdxl_turbo_onnx_fp32():
     global _sdxl_turbo_onnx
     if _sdxl_turbo_onnx is None:
         if not ONNX_AVAILABLE or OnnxStableDiffusionXLPipeline is None:
@@ -167,168 +153,16 @@ def get_sdxl_turbo_onnx_fp16():
                 detail="ONNX SDXL is not available. Install optimum[onnxruntime] to use ONNX SDXL models."
             )
         provider = "CUDAExecutionProvider" if torch.cuda.is_available() else "CPUExecutionProvider"
-        _sdxl_turbo_onnx = OnnxStableDiffusionXLPipeline.from_pretrained(
-            "Mitchins/sdxl-turbo-onnx-fp16",
-            provider=provider
+        
+        # SDXL-Turbo ONNX not yet available - needs to be uploaded to HuggingFace
+        raise HTTPException(
+            status_code=503,
+            detail="SDXL-Turbo ONNX model not yet available in controlled repo"
         )
     return _sdxl_turbo_onnx
 
-# GGUF loaders using native diffusers support with from_single_file
-def get_sd15_gguf_pipeline(model_repo: str, gguf_filename: str, cache_key: str):
-    """Load SD1.5 GGUF model using from_single_file approach."""
-    global _gguf_pipelines
-    
-    if cache_key not in _gguf_pipelines:
-        device = choose_device()
-        
-        # Load quantized UNet using from_single_file
-        # Use complete HuggingFace URL format
-        gguf_url = f"https://huggingface.co/{model_repo}/blob/main/{gguf_filename}"
-        try:
-            quantized_unet = UNet2DConditionModel.from_single_file(
-                gguf_url,
-                quantization_config=GGUFQuantizationConfig(compute_dtype=torch.float16),
-                torch_dtype=torch.float16
-            )
-            
-            # Create pipeline with quantized UNet and regular components
-            _gguf_pipelines[cache_key] = StableDiffusionPipeline.from_pretrained(
-                "runwayml/stable-diffusion-v1-5",
-                unet=quantized_unet,
-                torch_dtype=torch.float16,
-                variant="fp16",
-                use_safetensors=True
-            )
-            
-            if device != "cpu":
-                _gguf_pipelines[cache_key].to(device)
-                
-        except Exception as e:
-            print(f"❌ Failed to load GGUF model {cache_key}: {e}")
-            # Don't fallback for explicitly requested quantizations - raise the error
-            raise HTTPException(
-                status_code=503,
-                detail=f"Failed to load GGUF model {cache_key}: {str(e)}. GGUF support requires diffusers>=0.24.0 and gguf package."
-            )
-            
-    return _gguf_pipelines[cache_key]
-
-def get_sd15_q8():
-    return get_sd15_gguf_pipeline(
-        "second-state/stable-diffusion-v1-5-GGUF",
-        "stable-diffusion-v1-5-pruned-emaonly-Q8_0.gguf",
-        "sd15_q8"
-    )
-
-def get_sd15_q4():
-    return get_sd15_gguf_pipeline(
-        "second-state/stable-diffusion-v1-5-GGUF", 
-        "stable-diffusion-v1-5-pruned-emaonly-Q4_1.gguf",
-        "sd15_q4"
-    )
-
-def get_sdxl_gguf_pipeline(model_repo: str, gguf_filename: str, cache_key: str):
-    """Load SDXL GGUF model using from_single_file approach."""
-    global _gguf_pipelines
-    
-    if cache_key not in _gguf_pipelines:
-        device = choose_device()
-        
-        # Load quantized UNet using from_single_file for SDXL
-        gguf_url = f"https://huggingface.co/{model_repo}/blob/main/{gguf_filename}"
-        try:
-            quantized_unet = UNet2DConditionModel.from_single_file(
-                gguf_url,
-                quantization_config=GGUFQuantizationConfig(compute_dtype=torch.float16),
-                torch_dtype=torch.float16
-            )
-            
-            # Create SDXL pipeline with quantized UNet and regular components
-            _gguf_pipelines[cache_key] = StableDiffusionXLPipeline.from_pretrained(
-                "stabilityai/stable-diffusion-xl-base-1.0",
-                unet=quantized_unet,
-                torch_dtype=torch.float16,
-                variant="fp16",
-                use_safetensors=True
-            )
-            
-            if device != "cpu":
-                _gguf_pipelines[cache_key].to(device)
-                
-        except Exception as e:
-            print(f"❌ Failed to load SDXL GGUF model {cache_key}: {e}")
-            # Don't fallback for explicitly requested quantizations - raise the error
-            raise HTTPException(
-                status_code=503,
-                detail=f"Failed to load SDXL GGUF model {cache_key}: {str(e)}. GGUF support requires diffusers>=0.24.0 and gguf package."
-            )
-            
-    return _gguf_pipelines[cache_key]
-
-def get_sdxl_q8():
-    return get_sdxl_gguf_pipeline(
-        "gpustack/stable-diffusion-xl-base-1.0-GGUF",
-        "stable-diffusion-xl-base-1.0-Q8_0.gguf", 
-        "sdxl_q8"
-    )
-
-def get_sdxl_q4():
-    return get_sdxl_gguf_pipeline(
-        "gpustack/stable-diffusion-xl-base-1.0-GGUF",
-        "stable-diffusion-xl-base-1.0-Q4_1.gguf",
-        "sdxl_q4"
-    )
-
-def get_flux1_gguf_pipeline(model_repo: str, gguf_filename: str, cache_key: str):
-    """Load FLUX GGUF model using from_single_file approach."""
-    global _gguf_pipelines
-    
-    if cache_key not in _gguf_pipelines:
-        device = choose_device()
-        
-        # Load quantized Transformer using from_single_file for FLUX
-        gguf_url = f"https://huggingface.co/{model_repo}/blob/main/{gguf_filename}"
-        try:
-            quantized_transformer = FluxTransformer2DModel.from_single_file(
-                gguf_url,
-                quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
-                torch_dtype=torch.bfloat16
-            )
-            
-            # Create FLUX pipeline with quantized transformer and regular components
-            _gguf_pipelines[cache_key] = FluxPipeline.from_pretrained(
-                "black-forest-labs/FLUX.1-schnell",
-                transformer=quantized_transformer,
-                torch_dtype=torch.bfloat16
-            )
-            
-            if device != "cpu":
-                _gguf_pipelines[cache_key].to(device)
-            _gguf_pipelines[cache_key].enable_model_cpu_offload()
-                
-        except Exception as e:
-            print(f"❌ Failed to load FLUX GGUF model {cache_key}: {e}")
-            # Don't fallback for explicitly requested quantizations - raise the error
-            raise HTTPException(
-                status_code=503,
-                detail=f"Failed to load FLUX GGUF model {cache_key}: {str(e)}. GGUF support requires diffusers>=0.24.0 and gguf package."
-            )
-            
-    return _gguf_pipelines[cache_key]
-
-def get_flux1_q8():
-    return get_flux1_gguf_pipeline(
-        "city96/FLUX.1-schnell-gguf",
-        "flux1-schnell-Q8_0.gguf",
-        "flux1_q8"
-    )
-
-def get_flux1_q4():
-    return get_flux1_gguf_pipeline(
-        "city96/FLUX.1-schnell-gguf", 
-        "flux1-schnell-Q4_1.gguf",
-        "flux1_q4"
-    )
+# GGUF support removed due to shape mismatch issues
+# Will be replaced with SafeTensors quantized models in the future
 
 # Request / response schemas
 class ImageGenRequest(BaseModel):
@@ -346,6 +180,7 @@ class ImageData(BaseModel):
 class ImageGenResponse(BaseModel):
     created: int
     data: List[ImageData]
+    generation_time_seconds: Optional[float] = None
 
 # Helper to encode PIL→base64
 def _pil_to_b64(img):
@@ -412,40 +247,7 @@ def _gen_sdxl_onnx(pipe, prompt, width, height, negative_prompt, n, **_):
         ).images[0])
     return imgs
 
-# GGUF adapter functions
-def _gen_sd15_gguf(pipe, prompt, width, height, negative_prompt, n, **_):
-    imgs = []
-    for _ in range(n):
-        imgs.append(pipe(
-            prompt=prompt,
-            negative_prompt=negative_prompt or "",
-            width=width,
-            height=height,
-            num_inference_steps=20,
-            guidance_scale=7.5
-        ).images[0])
-    return imgs
-
-def _gen_sdxl_gguf(pipe, prompt, width, height, negative_prompt, n, **_):
-    imgs = []
-    for _ in range(n):
-        imgs.append(pipe(
-            prompt=prompt,
-            negative_prompt=negative_prompt or "",
-            width=width,
-            height=height,
-            num_inference_steps=25,
-            guidance_scale=8.0
-        ).images[0])
-    return imgs
-
-def _gen_flux1_gguf(pipe, prompt, **_):
-    return [pipe(
-        prompt,
-        guidance_scale=0.0,
-        num_inference_steps=4,
-        max_sequence_length=256
-    ).images[0]]
+# GGUF adapter functions removed - replaced by SafeTensors quantized models
 
 # Model metadata for frontend features
 MODEL_METADATA = {
@@ -491,10 +293,10 @@ MODEL_METADATA = {
         "max_resolution": 768,
         "default_resolution": 512,
         "min_resolution": 256,
-        "display_name": "Stable Diffusion 1.5 (ONNX FP16)",
-        "description": "ONNX optimized model with 50% memory reduction",
-        "memory_requirement": "~2GB",
-        "quantization": "FP16"
+        "display_name": "Stable Diffusion 1.5 (ONNX FP32)",
+        "description": "ONNX CPU/GPU optimized, reliable controlled repo",
+        "memory_requirement": "~4GB",
+        "quantization": "FP32"
     },
     "sdxl-onnx": {
         "engine": "onnx",
@@ -502,21 +304,22 @@ MODEL_METADATA = {
         "max_resolution": 1536,
         "default_resolution": 1024,
         "min_resolution": 512,
-        "display_name": "Stable Diffusion XL (ONNX)",
-        "description": "ONNX optimized SDXL for CPU/GPU inference",
-        "memory_requirement": "~8GB",
+        "display_name": "Stable Diffusion XL (ONNX FP32)",
+        "description": "ONNX CPU/GPU optimized, reliable controlled repo",
+        "memory_requirement": "~12GB",
         "quantization": "FP32"
     },
     "sdxl-turbo-onnx": {
-        "engine": "onnx", 
+        "engine": "onnx",
         "supports_negative_prompt": True,
         "max_resolution": 1024,
         "default_resolution": 1024,
         "min_resolution": 512,
-        "display_name": "SDXL Turbo (ONNX FP16)",
-        "description": "ONNX optimized SDXL Turbo, fast generation",
-        "memory_requirement": "~5GB",
-        "quantization": "FP16"
+        "display_name": "Stable Diffusion XL Turbo (ONNX FP32)",
+        "description": "Fast ONNX generation - currently unavailable due to disk space",
+        "memory_requirement": "~12GB",
+        "quantization": "FP32",
+        "available": False
     }
 }
 
@@ -526,17 +329,10 @@ PIPE_REGISTRY = {
     "flux1-schnell": (get_flux1, _gen_flux1),
     "qwen-image": (get_qwen_image, _gen_qwen_image),
     "sdxl-turbo": (get_sdxl_turbo, _gen_sdxl_turbo),
-    # ONNX models - FP16 only
-    **({'sd15-onnx': (get_sd15_onnx_fp16, _gen_sd15_onnx)} if ONNX_AVAILABLE else {}),
-    **({'sdxl-onnx': (get_sdxl_onnx_fp16, _gen_sdxl_onnx)} if ONNX_AVAILABLE and OnnxStableDiffusionXLPipeline else {}),
-    **({'sdxl-turbo-onnx': (get_sdxl_turbo_onnx_fp16, _gen_sdxl_onnx)} if ONNX_AVAILABLE and OnnxStableDiffusionXLPipeline else {}),
-    # GGUF models
-    "sd15-q8": (get_sd15_q8, _gen_sd15_gguf),
-    "sd15-q4": (get_sd15_q4, _gen_sd15_gguf),
-    "sdxl-q8": (get_sdxl_q8, _gen_sdxl_gguf),
-    "sdxl-q4": (get_sdxl_q4, _gen_sdxl_gguf), 
-    "flux1-q8": (get_flux1_q8, _gen_flux1_gguf),
-    "flux1-q4": (get_flux1_q4, _gen_flux1_gguf)
+    # ONNX models - FP32 controlled repos
+    **({'sd15-onnx': (get_sd15_onnx_fp32, _gen_sd15_onnx)} if ONNX_AVAILABLE else {}),
+    **({'sdxl-onnx': (get_sdxl_onnx_fp32, _gen_sdxl_onnx)} if ONNX_AVAILABLE and OnnxStableDiffusionXLPipeline else {}),
+    **({'sdxl-turbo-onnx': (get_sdxl_turbo_onnx_fp32, _gen_sdxl_onnx)} if ONNX_AVAILABLE and OnnxStableDiffusionXLPipeline else {})
 }
 
 @router.get("/v1/models/generation")
@@ -607,6 +403,7 @@ def clear_cache():
 def generate(req: ImageGenRequest):
     import logging
     logger = logging.getLogger(__name__)
+    start_time = time.time()
     logger.info(f"🎨 Generation request received: model={req.model}, working_set={req.working_set}")
     original_model = req.model.lower()
     
@@ -632,7 +429,7 @@ def generate(req: ImageGenRequest):
     
     # Try new diffusion system first
     try:
-        return _generate_with_diffusion_system(req, key)
+        return _generate_with_diffusion_system(req, key, start_time)
     except Exception as e:
         # Fall back to legacy system
         pass
@@ -675,12 +472,14 @@ def generate(req: ImageGenRequest):
         n=req.n
     )
 
+    generation_time = time.time() - start_time
     return ImageGenResponse(
         created=int(time.time()),
-        data=[ImageData(b64_json=_pil_to_b64(img)) for img in pil_imgs]
+        data=[ImageData(b64_json=_pil_to_b64(img)) for img in pil_imgs],
+        generation_time_seconds=generation_time
     )
 
-def _generate_with_diffusion_system(req: ImageGenRequest, model_key: str) -> ImageGenResponse:
+def _generate_with_diffusion_system(req: ImageGenRequest, model_key: str, start_time: float) -> ImageGenResponse:
     """Generate using the new diffusion model system."""
     import logging
     logger = logging.getLogger(__name__)
@@ -737,7 +536,9 @@ def _generate_with_diffusion_system(req: ImageGenRequest, model_key: str) -> Ima
     except Exception as e:
         raise HTTPException(500, f"Generation failed: {str(e)}")
     
+    generation_time = time.time() - start_time
     return ImageGenResponse(
         created=int(time.time()),
-        data=[ImageData(b64_json=_pil_to_b64(img)) for img in pil_imgs[:req.n or 1]]
+        data=[ImageData(b64_json=_pil_to_b64(img)) for img in pil_imgs[:req.n or 1]],
+        generation_time_seconds=generation_time
     )

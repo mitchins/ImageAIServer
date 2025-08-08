@@ -409,7 +409,7 @@
             }
             
             const data = await response.json();
-            displayResults(data.data, data.created);
+            displayResults(data.data, data.created, data.generation_time_seconds);
             
         } catch (error) {
             console.error('Generation error:', error);
@@ -420,12 +420,23 @@
         }
     }
     
-    function displayResults(images, createdTimestamp) {
+    function displayResults(images, createdTimestamp, generationTimeSeconds) {
         const container = document.getElementById('results-container');
         container.innerHTML = '';
         
-        // Calculate generation time
-        const generationTime = createdTimestamp ? new Date(createdTimestamp * 1000).toLocaleString() : 'Unknown';
+        // Format generation time
+        let generationTimeText = 'Unknown';
+        if (generationTimeSeconds) {
+            const minutes = Math.floor(generationTimeSeconds / 60);
+            const seconds = Math.floor(generationTimeSeconds % 60);
+            if (minutes > 0) {
+                generationTimeText = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            } else {
+                generationTimeText = `${seconds}s`;
+            }
+        }
+        
+        const generatedAt = createdTimestamp ? new Date(createdTimestamp * 1000).toLocaleString() : 'Unknown';
         
         images.forEach((img, index) => {
             const col = document.createElement('div');
@@ -450,7 +461,7 @@
                         <p class="grey-text text-darken-1" style="font-size: 0.8rem; margin: 0;">
                             <strong>${modelName}</strong><br>
                             ${backendName} • ${quantName}<br>
-                            <span style="font-size: 0.7rem;">Generated: ${generationTime}</span>
+                            <span style="font-size: 0.7rem;">Time: ${generationTimeText} • ${generatedAt}</span>
                         </p>
                     </div>
                 </div>
