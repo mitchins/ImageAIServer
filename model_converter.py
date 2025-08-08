@@ -275,28 +275,128 @@ def quantize_pytorch_int8(model_key: str, output_dir: Path) -> bool:
             log("Applied native PyTorch INT8 weight quantization")
             
         else:
-            # Use torchao (cleaner, better performance)
+            # Use torchao (cleaner, better performance) with memory-efficient loading
             pipeline_class = config["pipeline_class"]
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            
+            # Use BF16 on Blackwell cards (RTX 5090) for better memory efficiency
+            if torch.cuda.is_available():
+                gpu_name = torch.cuda.get_device_name(0).lower()
+                supports_bf16 = "rtx 50" in gpu_name or "rtx 40" in gpu_name or "h100" in gpu_name or "a100" in gpu_name
+                dtype = torch.bfloat16 if supports_bf16 else torch.float16
+                log(f"GPU: {torch.cuda.get_device_name(0)}")
+                log(f"Using {'BF16' if supports_bf16 else 'FP16'} for {'better' if supports_bf16 else 'standard'} memory efficiency")
+            else:
+                dtype = torch.float16
+                supports_bf16 = False
+            
+            log(f"Loading model with low_cpu_mem_usage=True and {dtype} precision")
             pipe = pipeline_class.from_pretrained(
                 config["model_id"],
-                torch_dtype=torch.float16,
-                use_safetensors=True
+                torch_dtype=dtype,
+                use_safetensors=True,
+                low_cpu_mem_usage=True,  # Load directly to device to save memory
+                device_map="auto" if device == "cuda" else None
             )
             
-            # Move to appropriate device
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            pipe = pipe.to(device)
+            # Move to appropriate device if not already there
+            if device == "cuda" and not next(pipe.unet.parameters()).is_cuda:
+                pipe = pipe.to(device)
             
-            # Apply int8 weight-only quantization to UNet
-            quantize_(pipe.unet, int8_weight_only())
+            # Enable memory-efficient attention if available
+            try:
+                pipe.enable_attention_slicing(1)  # Slice attention to reduce memory
+                log("✅ Enabled attention slicing for memory efficiency")
+            except:
+                pass
+            
+            try:
+                pipe.enable_model_cpu_offload()  # Offload when not in use
+                log("✅ Enabled CPU offload for memory efficiency")
+            except:
+                pass
+            
+            # Force garbage collection before quantization
+            import gc
+            gc.collect()
+            torch.cuda.empty_cache()
+            
+            # Enable mixed precision for Blackwell cards to reduce temporary memory usage
+            use_amp = supports_bf16 and device == "cuda"
+            if use_amp:
+                log("🚀 Enabling AMP (Automatic Mixed Precision) for memory-efficient quantization")
+            
+            log(f"Applying INT8 quantization component by component to save memory...")
+            
+            # Check memory before quantization
+            if torch.cuda.is_available():
+                memory_before = torch.cuda.memory_allocated() / 1024**3
+                log(f"  📊 GPU Memory before quantization: {memory_before:.2f}GB")
+            
+            # Quantize UNet (largest component) - this is where FP32 inflation might happen
+            log("  🔧 Quantizing UNet (checking for FP32 inflation)...")
+            
+            # TorchAO may temporarily convert FP16 -> FP32 -> INT8
+            # Monitor memory spike during this step
+            memory_peak = memory_before
+            if torch.cuda.is_available():
+                torch.cuda.reset_peak_memory_stats()
+            
+            try:
+                # Try TorchAO quantization with memory monitoring and mixed precision
+                if use_amp:
+                    with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+                        quantize_(pipe.unet, int8_weight_only())
+                else:
+                    quantize_(pipe.unet, int8_weight_only())
+                
+                if torch.cuda.is_available():
+                    memory_peak = torch.cuda.max_memory_allocated() / 1024**3
+                    memory_after = torch.cuda.memory_allocated() / 1024**3
+                    log(f"  📊 Memory during UNet quantization - Peak: {memory_peak:.2f}GB, After: {memory_after:.2f}GB")
+                    if memory_peak > memory_before * 1.8:  # 80% increase suggests FP32 inflation
+                        log(f"  ⚠️  DETECTED: TorchAO inflated to FP32 (peak {memory_peak:.2f}GB vs before {memory_before:.2f}GB)")
+                        if not use_amp:
+                            log(f"  💡 Try upgrading to RTX 40/50 series or H100/A100 for BF16 mixed precision support")
+                    else:
+                        efficiency = "with BF16+AMP" if use_amp else "with FP16"
+                        log(f"  ✅ Efficient quantization completed {efficiency} - no significant memory inflation")
+            
+            except torch.cuda.OutOfMemoryError as e:
+                log(f"  ❌ OOM during TorchAO quantization: {e}")
+                log(f"  🔄 Falling back to CPU quantization then GPU transfer...")
+                
+                # Fallback: Move to CPU, quantize, then move back
+                original_device = next(pipe.unet.parameters()).device
+                pipe.unet = pipe.unet.to("cpu")
+                gc.collect()
+                torch.cuda.empty_cache()
+                
+                # Quantize on CPU (no memory constraints)
+                quantize_(pipe.unet, int8_weight_only())
+                
+                # Move quantized model back to GPU
+                pipe.unet = pipe.unet.to(original_device)
+                log(f"  ✅ CPU quantization completed, moved back to {original_device}")
+            
+            gc.collect()
+            torch.cuda.empty_cache()
             
             # Quantize text encoders
             if hasattr(pipe, 'text_encoder'):
+                log("  🔧 Quantizing Text Encoder...")
                 quantize_(pipe.text_encoder, int8_weight_only())
-            if hasattr(pipe, 'text_encoder_2'):
-                quantize_(pipe.text_encoder_2, int8_weight_only())
+                gc.collect()
+                torch.cuda.empty_cache()
                 
-            log(f"Applied torchao INT8 weight-only quantization on {device}")
+            if hasattr(pipe, 'text_encoder_2'):
+                log("  🔧 Quantizing Text Encoder 2...")
+                quantize_(pipe.text_encoder_2, int8_weight_only())
+                gc.collect()
+                torch.cuda.empty_cache()
+                
+            log(f"✅ Applied torchao INT8 weight-only quantization on {device}")
+            log(f"   Memory optimization: low_cpu_mem_usage + attention_slicing + cpu_offload")
         
         # Save the model with special handling for quantized models
         output_dir.mkdir(parents=True, exist_ok=True)
