@@ -603,7 +603,7 @@ def main():
     )
     parser.add_argument(
         "--repo-prefix",
-        default="Mitchins",
+        default="imgailab",
         help="HuggingFace repo prefix"
     )
     

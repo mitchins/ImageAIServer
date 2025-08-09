@@ -124,7 +124,7 @@ def get_sd15_onnx_fp32():
             )
         provider = "CUDAExecutionProvider" if torch.cuda.is_available() else "CPUExecutionProvider"
         _sd15_onnx = OnnxStableDiffusionPipeline.from_pretrained(
-            "Mitchins/sd15-onnx-cpu",
+            "imgailab/sd15-onnx-cpu",
             provider=provider
         )
     return _sd15_onnx
@@ -139,7 +139,7 @@ def get_sdxl_onnx_fp32():
             )
         provider = "CUDAExecutionProvider" if torch.cuda.is_available() else "CPUExecutionProvider"
         _sdxl_onnx = OnnxStableDiffusionXLPipeline.from_pretrained(
-            "Mitchins/sdxl-onnx-cpu",
+            "imgailab/sdxl-onnx-cpu",
             provider=provider
         )
     return _sdxl_onnx
@@ -153,13 +153,181 @@ def get_sdxl_turbo_onnx_fp32():
                 detail="ONNX SDXL is not available. Install optimum[onnxruntime] to use ONNX SDXL models."
             )
         provider = "CUDAExecutionProvider" if torch.cuda.is_available() else "CPUExecutionProvider"
+        model_path = "imgailab/sdxl-turbo-onnx-cpu"
+        print(f"🔧 [DEBUG] Loading SDXL-Turbo ONNX from: {model_path}")
         
-        # SDXL-Turbo ONNX not yet available - needs to be uploaded to HuggingFace
-        raise HTTPException(
-            status_code=503,
-            detail="SDXL-Turbo ONNX model not yet available in controlled repo"
+        _sdxl_turbo_onnx = OnnxStableDiffusionXLPipeline.from_pretrained(
+            model_path,
+            provider=provider
         )
+        print(f"✅ [DEBUG] SDXL-Turbo ONNX loaded successfully")
     return _sdxl_turbo_onnx
+
+# INT8 Model Loaders
+_sd15_int8 = None
+_sdxl_int8 = None
+_sdxl_turbo_int8 = None
+_flux1_int8 = None
+
+def get_sd15_pytorch_int8():
+    import logging
+    logger = logging.getLogger(__name__)
+    global _sd15_int8
+    if _sd15_int8 is None:
+        device = choose_device()
+        model_path = "imgailab/sd15-torch-int8"
+        logger.info(f"🔧 Loading SD1.5 INT8 model from: {model_path}")
+        logger.info(f"   Device: {device}")
+        logger.info(f"   Format: PyTorch (.bin files, not safetensors)")
+        logger.info(f"   Expected: TorchAO INT8 quantized weights")
+        # Force print for debugging
+        print(f"🔧 [DEBUG] Loading SD1.5 INT8 model from: {model_path}")
+        print(f"   Device: {device}")
+        print(f"   Format: PyTorch (.bin files, not safetensors)")
+        
+        _sd15_int8 = StableDiffusionPipeline.from_pretrained(
+            model_path,
+            torch_dtype=torch.float16,
+            use_safetensors=False  # INT8 models use PyTorch format
+        ).to(device)
+        
+        # Verify model loaded correctly
+        logger.info(f"✅ SD1.5 INT8 model loaded successfully")
+        logger.info(f"   UNet device: {next(_sd15_int8.unet.parameters()).device}")
+        logger.info(f"   UNet dtype: {next(_sd15_int8.unet.parameters()).dtype}")
+        
+        # Check if quantization info exists
+        try:
+            import json
+            from transformers.utils import cached_file
+            quant_file = cached_file(model_path, "quantization_info.json")
+            if quant_file:
+                with open(quant_file, 'r') as f:
+                    quant_info = json.load(f)
+                logger.info(f"   Quantization method: {quant_info.get('method', 'unknown')}")
+                logger.info(f"   Original model: {quant_info.get('original_model', 'unknown')}")
+        except Exception as e:
+            logger.warning(f"   Could not load quantization info: {e}")
+            
+    return _sd15_int8
+
+def get_sdxl_pytorch_int8():
+    import logging
+    logger = logging.getLogger(__name__)
+    global _sdxl_int8
+    if _sdxl_int8 is None:
+        device = choose_device()
+        model_path = "imgailab/sdxl-torch-int8"
+        logger.info(f"🔧 Loading SDXL INT8 model from: {model_path}")
+        logger.info(f"   Device: {device}")
+        logger.info(f"   Format: PyTorch (.bin files, not safetensors)")
+        logger.info(f"   Expected: TorchAO INT8 quantized weights")
+        
+        _sdxl_int8 = StableDiffusionXLPipeline.from_pretrained(
+            model_path,
+            torch_dtype=torch.float16,
+            use_safetensors=False  # INT8 models use PyTorch format
+        ).to(device)
+        
+        # Verify model loaded correctly
+        logger.info(f"✅ SDXL INT8 model loaded successfully")
+        logger.info(f"   UNet device: {next(_sdxl_int8.unet.parameters()).device}")
+        logger.info(f"   UNet dtype: {next(_sdxl_int8.unet.parameters()).dtype}")
+        
+        # Check if quantization info exists
+        try:
+            import json
+            from transformers.utils import cached_file
+            quant_file = cached_file(model_path, "quantization_info.json")
+            if quant_file:
+                with open(quant_file, 'r') as f:
+                    quant_info = json.load(f)
+                logger.info(f"   Quantization method: {quant_info.get('method', 'unknown')}")
+                logger.info(f"   Original model: {quant_info.get('original_model', 'unknown')}")
+        except Exception as e:
+            logger.warning(f"   Could not load quantization info: {e}")
+            
+    return _sdxl_int8
+
+def get_sdxl_turbo_pytorch_int8():
+    import logging
+    logger = logging.getLogger(__name__)
+    global _sdxl_turbo_int8
+    if _sdxl_turbo_int8 is None:
+        device = choose_device()
+        model_path = "imgailab/sdxl-turbo-torch-int8"
+        logger.info(f"🔧 Loading SDXL-Turbo INT8 model from: {model_path}")
+        logger.info(f"   Device: {device}")
+        logger.info(f"   Format: PyTorch (.bin files, not safetensors)")
+        logger.info(f"   Expected: TorchAO INT8 quantized weights")
+        
+        _sdxl_turbo_int8 = StableDiffusionXLPipeline.from_pretrained(
+            model_path,
+            torch_dtype=torch.float16,
+            use_safetensors=False  # INT8 models use PyTorch format
+        ).to(device)
+        
+        # Verify model loaded correctly
+        logger.info(f"✅ SDXL-Turbo INT8 model loaded successfully")
+        logger.info(f"   UNet device: {next(_sdxl_turbo_int8.unet.parameters()).device}")
+        logger.info(f"   UNet dtype: {next(_sdxl_turbo_int8.unet.parameters()).dtype}")
+        
+        # Check if quantization info exists
+        try:
+            import json
+            from transformers.utils import cached_file
+            quant_file = cached_file(model_path, "quantization_info.json")
+            if quant_file:
+                with open(quant_file, 'r') as f:
+                    quant_info = json.load(f)
+                logger.info(f"   Quantization method: {quant_info.get('method', 'unknown')}")
+                logger.info(f"   Original model: {quant_info.get('original_model', 'unknown')}")
+        except Exception as e:
+            logger.warning(f"   Could not load quantization info: {e}")
+            
+    return _sdxl_turbo_int8
+
+def get_flux1_pytorch_int8():
+    import logging
+    logger = logging.getLogger(__name__)
+    global _flux1_int8
+    if _flux1_int8 is None:
+        device = choose_device()
+        model_path = "imgailab/flux1-torch-int8"
+        logger.info(f"🔧 Loading FLUX.1 INT8 model from: {model_path}")
+        logger.info(f"   Device: {device}")
+        logger.info(f"   Format: PyTorch (.bin files, not safetensors)")
+        logger.info(f"   Expected: TorchAO INT8 quantized weights")
+        
+        _flux1_int8 = FluxPipeline.from_pretrained(
+            model_path,
+            torch_dtype=torch.float16,
+            use_safetensors=False  # INT8 models use PyTorch format
+        )
+        
+        if device != "cpu":
+            _flux1_int8.to(device)
+        _flux1_int8.enable_model_cpu_offload()
+        
+        # Verify model loaded correctly (FLUX uses transformer, not unet)
+        logger.info(f"✅ FLUX.1 INT8 model loaded successfully")
+        logger.info(f"   Transformer device: {next(_flux1_int8.transformer.parameters()).device}")
+        logger.info(f"   Transformer dtype: {next(_flux1_int8.transformer.parameters()).dtype}")
+        
+        # Check if quantization info exists
+        try:
+            import json
+            from transformers.utils import cached_file
+            quant_file = cached_file(model_path, "quantization_info.json")
+            if quant_file:
+                with open(quant_file, 'r') as f:
+                    quant_info = json.load(f)
+                logger.info(f"   Quantization method: {quant_info.get('method', 'unknown')}")
+                logger.info(f"   Original model: {quant_info.get('original_model', 'unknown')}")
+        except Exception as e:
+            logger.warning(f"   Could not load quantization info: {e}")
+            
+    return _flux1_int8
 
 # GGUF support removed due to shape mismatch issues
 # Will be replaced with SafeTensors quantized models in the future
@@ -195,11 +363,15 @@ def _gen_sdxl(pipe, prompt, **_):
 def _gen_sdxl_turbo(pipe, prompt, width, height, negative_prompt, n, **_):
     imgs = []
     for _ in range(n):
+        # SDXL-Turbo specific parameters - guidance_scale=0.0 and 1 step
         imgs.append(pipe(
             prompt=prompt,
             negative_prompt=negative_prompt,
             width=width,
             height=height,
+            num_inference_steps=1,   # SDXL-Turbo works best with 1 step
+            guidance_scale=0.0,      # Model trained without guidance
+            generator=torch.Generator(device="cuda" if torch.cuda.is_available() else "cpu").manual_seed(42)
         ).images[0])
     return imgs
 
@@ -247,6 +419,70 @@ def _gen_sdxl_onnx(pipe, prompt, width, height, negative_prompt, n, **_):
         ).images[0])
     return imgs
 
+def _gen_sdxl_turbo_onnx(pipe, prompt, width, height, negative_prompt, n, **_):
+    imgs = []
+    for _ in range(n):
+        # SDXL-Turbo ONNX needs the same 1-step, no-guidance parameters
+        imgs.append(pipe(
+            prompt=prompt,
+            negative_prompt=negative_prompt or "",
+            width=width,
+            height=height,
+            num_inference_steps=1,   # SDXL-Turbo works best with 1 step
+            guidance_scale=0.0       # Model trained without guidance
+        ).images[0])
+    return imgs
+
+# INT8 adapter functions
+def _gen_sd15_int8(pipe, prompt, width, height, negative_prompt, n, **_):
+    imgs = []
+    for _ in range(n):
+        imgs.append(pipe(
+            prompt=prompt,
+            negative_prompt=negative_prompt or "",
+            width=width,
+            height=height,
+            num_inference_steps=20,
+            guidance_scale=7.5
+        ).images[0])
+    return imgs
+
+def _gen_sdxl_int8(pipe, prompt, width, height, negative_prompt, n, **_):
+    imgs = []
+    for _ in range(n):
+        imgs.append(pipe(
+            prompt=prompt,
+            negative_prompt=negative_prompt or "",
+            width=width,
+            height=height,
+            num_inference_steps=25,
+            guidance_scale=8.0
+        ).images[0])
+    return imgs
+
+def _gen_sdxl_turbo_int8(pipe, prompt, width, height, negative_prompt, n, **_):
+    imgs = []
+    for _ in range(n):
+        # SDXL-Turbo INT8 uses the same parameters as FP16 - 1 step, no guidance
+        imgs.append(pipe(
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            width=width,
+            height=height,
+            num_inference_steps=1,   # SDXL-Turbo works best with 1 step
+            guidance_scale=0.0,      # Model trained without guidance
+            generator=torch.Generator(device="cuda" if torch.cuda.is_available() else "cpu").manual_seed(42)
+        ).images[0])
+    return imgs
+
+def _gen_flux1_int8(pipe, prompt, **_):
+    return [pipe(
+        prompt,
+        guidance_scale=0.0,
+        num_inference_steps=4,
+        max_sequence_length=256
+    ).images[0]]
+
 # GGUF adapter functions removed - replaced by SafeTensors quantized models
 
 # Model metadata for frontend features
@@ -280,10 +516,10 @@ MODEL_METADATA = {
         "engine": "pytorch",
         "supports_negative_prompt": True,
         "max_resolution": 1024,
-        "default_resolution": 1024,
+        "default_resolution": 512,  # SDXL-Turbo works best at 512x512
         "min_resolution": 512,
         "display_name": "Stable Diffusion XL Turbo",
-        "description": "Fast SDXL variant, fewer steps needed",
+        "description": "Fast SDXL variant, 1-step inference",
         "memory_requirement": "~8GB VRAM",
         "quantization": "FP16"
     },
@@ -313,13 +549,57 @@ MODEL_METADATA = {
         "engine": "onnx",
         "supports_negative_prompt": True,
         "max_resolution": 1024,
-        "default_resolution": 1024,
+        "default_resolution": 512,  # SDXL-Turbo works best at 512x512
         "min_resolution": 512,
         "display_name": "Stable Diffusion XL Turbo (ONNX FP32)",
-        "description": "Fast ONNX generation - currently unavailable due to disk space",
+        "description": "Fast ONNX generation, 1-step inference",
         "memory_requirement": "~12GB",
-        "quantization": "FP32",
-        "available": False
+        "quantization": "FP32"
+    },
+    # INT8 Models
+    "sd15-pytorch:int8": {
+        "engine": "pytorch",
+        "supports_negative_prompt": True,
+        "max_resolution": 768,
+        "default_resolution": 512,
+        "min_resolution": 256,
+        "display_name": "Stable Diffusion 1.5 (PyTorch INT8)",
+        "description": "TorchAO quantized, ~50% memory reduction",
+        "memory_requirement": "~1GB VRAM",
+        "quantization": "INT8"
+    },
+    "sdxl-pytorch:int8": {
+        "engine": "pytorch",
+        "supports_negative_prompt": True,
+        "max_resolution": 1536,
+        "default_resolution": 1024,
+        "min_resolution": 512,
+        "display_name": "Stable Diffusion XL (PyTorch INT8)",
+        "description": "TorchAO quantized, ~50% memory reduction",
+        "memory_requirement": "~3.5GB VRAM",
+        "quantization": "INT8"
+    },
+    "sdxl-turbo-pytorch:int8": {
+        "engine": "pytorch",
+        "supports_negative_prompt": True,
+        "max_resolution": 1024,
+        "default_resolution": 512,  # SDXL-Turbo works best at 512x512
+        "min_resolution": 512,
+        "display_name": "Stable Diffusion XL Turbo (PyTorch INT8)",
+        "description": "TorchAO quantized, 1-step inference with 50% memory reduction",
+        "memory_requirement": "~3.5GB VRAM",
+        "quantization": "INT8"
+    },
+    "flux1-pytorch:int8": {
+        "engine": "pytorch",
+        "supports_negative_prompt": False,
+        "max_resolution": 1024,
+        "default_resolution": 1024,
+        "min_resolution": 256,
+        "display_name": "FLUX.1 Schnell (PyTorch INT8)",
+        "description": "TorchAO quantized, ~50% memory reduction for complex prompts",
+        "memory_requirement": "~12GB VRAM",
+        "quantization": "INT8"
     }
 }
 
@@ -332,8 +612,21 @@ PIPE_REGISTRY = {
     # ONNX models - FP32 controlled repos
     **({'sd15-onnx': (get_sd15_onnx_fp32, _gen_sd15_onnx)} if ONNX_AVAILABLE else {}),
     **({'sdxl-onnx': (get_sdxl_onnx_fp32, _gen_sdxl_onnx)} if ONNX_AVAILABLE and OnnxStableDiffusionXLPipeline else {}),
-    **({'sdxl-turbo-onnx': (get_sdxl_turbo_onnx_fp32, _gen_sdxl_onnx)} if ONNX_AVAILABLE and OnnxStableDiffusionXLPipeline else {})
+    **({'sdxl-turbo-onnx': (get_sdxl_turbo_onnx_fp32, _gen_sdxl_turbo_onnx)} if ONNX_AVAILABLE and OnnxStableDiffusionXLPipeline else {}),
+    # INT8 models
+    "sd15-pytorch:int8": (get_sd15_pytorch_int8, _gen_sd15_int8),
+    "sdxl-pytorch:int8": (get_sdxl_pytorch_int8, _gen_sdxl_int8),
+    "sdxl-turbo-pytorch:int8": (get_sdxl_turbo_pytorch_int8, _gen_sdxl_turbo_int8),
+    "flux1-pytorch:int8": (get_flux1_pytorch_int8, _gen_flux1_int8)
 }
+
+# Log INT8 model registration on import (this will show at startup)
+import logging
+_startup_logger = logging.getLogger(__name__)
+_int8_models = [k for k in PIPE_REGISTRY.keys() if "int8" in k]
+if _int8_models:
+    print(f"🔧 INT8 Models Registered: {', '.join(_int8_models)}")
+    _startup_logger.info(f"INT8 Models available: {', '.join(_int8_models)}")
 
 @router.get("/v1/models/generation")
 def get_generation_models():
@@ -375,6 +668,19 @@ def get_loaded_models():
         "legacy_models": list(PIPE_REGISTRY.keys())
     }
 
+@router.get("/v1/models/generation/runtime-status")
+def get_runtime_status():
+    """Get current runtime status and model compatibility information."""
+    return model_config.get_runtime_status()
+
+@router.get("/v1/models/generation/optimal")
+def get_optimal_models(memory_efficient: bool = False):
+    """Get optimal model recommendations based on detected runtime."""
+    return {
+        "optimal_models": model_config.get_optimal_models(prefer_memory_efficient=memory_efficient),
+        "runtime_status": model_config.get_runtime_status()
+    }
+
 @router.post("/v1/models/generation/unload")
 def unload_pipeline(request: dict):
     """Unload a specific pipeline to free memory."""
@@ -407,25 +713,36 @@ def generate(req: ImageGenRequest):
     logger.info(f"🎨 Generation request received: model={req.model}, working_set={req.working_set}")
     original_model = req.model.lower()
     
+    # Log detailed model resolution process
+    logger.info(f"🔍 Resolving model ID: '{original_model}'")
+    # Force print for debugging regardless of log level
+    print(f"🔍 [DEBUG] Resolving model ID: '{original_model}'")
+    
     # Try to resolve model using config system first
     resolved = model_config.resolve_model_id(original_model)
     if resolved:
         model, backend, quantization = resolved
-        logger.info(f"🔧 Resolved {original_model} to model={model}, backend={backend}, quantization={quantization}")
+        logger.info(f"✅ Resolved '{original_model}' to:")
+        logger.info(f"   Model: {model}")
+        logger.info(f"   Backend: {backend}")
+        logger.info(f"   Quantization: {quantization}")
+        # Force print for debugging
+        print(f"✅ [DEBUG] Resolved '{original_model}' to: {model}/{backend}/{quantization}")
         
-        # Look up corresponding legacy ID from the mapping
-        for legacy_id, mapping in model_config.id_mapping.items():
+        # Look up corresponding router ID from the mapping
+        for router_id, mapping in model_config.id_mapping.items():
             if mapping == [model, backend, quantization]:
-                key = legacy_id
-                logger.info(f"🔄 Mapped to legacy ID: {key}")
+                key = router_id
+                logger.info(f"🔄 Found router mapping: '{original_model}' -> '{key}'")
+                print(f"🔄 [DEBUG] Found router mapping: '{original_model}' -> '{key}'")
                 break
         else:
-            # No legacy mapping found, use resolved model name as key
+            # No router mapping found, use resolved model name as key
             key = model
-            logger.info(f"🔄 Using resolved model name: {key}")
+            logger.info(f"🔄 No router mapping found, using resolved model name: '{key}'")
     else:
         key = original_model
-        logger.info(f"❌ Could not resolve {original_model}, using as-is")
+        logger.info(f"❌ Could not resolve '{original_model}' in model config, using as-is: '{key}'")
     
     # Try new diffusion system first
     try:
@@ -434,13 +751,20 @@ def generate(req: ImageGenRequest):
         # Fall back to legacy system
         pass
     
-    # Legacy system
+    # Router system
+    logger.info(f"🔧 Attempting to load model using router system with key: '{key}'")
     getter, adapter = PIPE_REGISTRY.get(key, (None, None))
     if not getter:
         available_models = list(PIPE_REGISTRY.keys()) + list(diffusion_loader.get_available_models().keys())
         config_models = list(model_config.get_legacy_model_metadata().keys())
         all_available = sorted(set(available_models + config_models))
+        logger.error(f"❌ Model '{key}' not found in PIPE_REGISTRY")
+        logger.info(f"   Available in PIPE_REGISTRY: {list(PIPE_REGISTRY.keys())}")
+        logger.info(f"   Available in diffusion_loader: {list(diffusion_loader.get_available_models().keys())}")
         raise HTTPException(400, f"model must be one of: {', '.join(all_available)}")
+    
+    logger.info(f"✅ Found model loader for '{key}': {getter.__name__}")
+    logger.info(f"   Adapter function: {adapter.__name__}")
 
     # Get model metadata for validation
     metadata = MODEL_METADATA.get(key, {})
@@ -462,7 +786,19 @@ def generate(req: ImageGenRequest):
         device = choose_device()  # This will raise HTTPException if no GPU
     # ONNX models can run on CPU, so no device check needed
 
+    # Load the pipeline (this will trigger our detailed logging)
+    logger.info(f"📥 Calling model loader: {getter.__name__}()")
+    print(f"📥 [DEBUG] Calling model loader: {getter.__name__}()")
     pipe = getter()
+    logger.info(f"✅ Pipeline loaded successfully")
+    print(f"✅ [DEBUG] Pipeline loaded successfully")
+    
+    # Generate images
+    logger.info(f"🎨 Starting generation with adapter: {adapter.__name__}")
+    logger.info(f"   Prompt: '{req.prompt[:50]}{'...' if len(req.prompt) > 50 else ''}'")
+    logger.info(f"   Resolution: {width}x{height}")
+    logger.info(f"   Count: {req.n}")
+    
     pil_imgs = adapter(
         pipe,
         req.prompt,

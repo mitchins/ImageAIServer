@@ -2,6 +2,8 @@
 
 **Privacy-focused AI image generation, vision, and face analysis - runs 100% offline on your hardware**
 
+🏢 **Organization**: [imgailab](https://github.com/imgailab) | 🤗 **Models**: [HuggingFace](https://huggingface.co/imgailab)
+
 ---
 
 ## 🚀 START HERE - PICK ONE:

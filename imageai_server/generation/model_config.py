@@ -1,11 +1,12 @@
 """
-Clean, data-driven model configuration system.
+Clean, data-driven model configuration system with runtime awareness.
 """
 
 import yaml
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Any
 import os
+from .runtime_manager import runtime_manager
 
 class ModelConfig:
     def __init__(self, config_path: Optional[str] = None):
@@ -19,26 +20,51 @@ class ModelConfig:
         self.id_mapping = self.config.get('model_id_mapping', {})
         self.ui_config = self.config.get('ui_config', {})
     
-    def get_available_combinations(self) -> List[Dict[str, Any]]:
-        """Get all available [model, backend, quantization] combinations."""
+    def get_available_combinations(self, filter_by_runtime: bool = True) -> List[Dict[str, Any]]:
+        """Get all available [model, backend, quantization] combinations.
+        
+        Args:
+            filter_by_runtime: If True, only return combinations that are compatible with detected runtimes
+        """
         combinations = []
+        
+        # Get available runtimes if filtering is enabled
+        available_runtimes = set()
+        if filter_by_runtime:
+            runtime_info = runtime_manager.detect_runtimes()
+            available_runtimes = {name for name, info in runtime_info.items() if info.available}
         
         for model_key, model_data in self.models.items():
             for backend_key, backend_data in model_data.get('backends', {}).items():
+                # Check backend runtime requirements
+                if filter_by_runtime:
+                    backend_requirements = set(backend_data.get('runtime_requirements', []))
+                    if backend_requirements and not backend_requirements.intersection(available_runtimes):
+                        continue  # Skip backend if no runtime requirements are satisfied
+                
                 for quant_key, quant_data in backend_data.get('quantizations', {}).items():
-                    if quant_data.get('available', False):
-                        combo_id = f"{model_key}-{backend_key}:{quant_key}"
-                        combinations.append({
-                            'id': combo_id,
-                            'model': model_key,
-                            'backend': backend_key,
-                            'quantization': quant_key,
-                            'display_name': self._get_display_name(model_key, backend_key, quant_key),
-                            'memory': quant_data.get('memory', 'Unknown'),
-                            'description': quant_data.get('description', ''),
-                            'model_data': model_data,
-                            'quant_data': quant_data
-                        })
+                    if not quant_data.get('available', False):
+                        continue
+                    
+                    # Check quantization runtime requirements
+                    if filter_by_runtime:
+                        quant_requirements = set(quant_data.get('runtime_requirements', backend_data.get('runtime_requirements', [])))
+                        if quant_requirements and not quant_requirements.intersection(available_runtimes):
+                            continue  # Skip quantization if no runtime requirements are satisfied
+                    
+                    combo_id = f"{model_key}-{backend_key}:{quant_key}"
+                    combinations.append({
+                        'id': combo_id,
+                        'model': model_key,
+                        'backend': backend_key,
+                        'quantization': quant_key,
+                        'display_name': self._get_display_name(model_key, backend_key, quant_key),
+                        'memory': quant_data.get('memory', 'Unknown'),
+                        'description': quant_data.get('description', ''),
+                        'model_data': model_data,
+                        'quant_data': quant_data,
+                        'runtime_compatible': True  # Only included if compatible
+                    })
         
         return combinations
     
@@ -159,7 +185,7 @@ class ModelConfig:
         }
     
     def get_legacy_model_metadata(self) -> Dict[str, Any]:
-        """Generate legacy model metadata for backward compatibility."""
+        """Generate router model metadata for backward compatibility."""
         metadata = {}
         
         for combo in self.get_available_combinations():
@@ -189,6 +215,62 @@ class ModelConfig:
             }
         
         return metadata
+    
+    def get_runtime_status(self) -> Dict[str, Any]:
+        """Get current runtime status and model compatibility."""
+        runtime_info = runtime_manager.detect_runtimes()
+        
+        status = {
+            'detected_runtimes': {
+                name: {
+                    'display_name': info.display_name,
+                    'available': info.available,
+                    'performance_tier': info.performance_tier,
+                    'memory_efficient': info.memory_efficient,
+                    'hardware_required': info.hardware_required,
+                    'notes': info.notes
+                }
+                for name, info in runtime_info.items()
+            },
+            'optimal_runtime': runtime_manager.get_optimal_runtime(),
+            'total_available_models': len(self.get_available_combinations(filter_by_runtime=False)),
+            'runtime_compatible_models': len(self.get_available_combinations(filter_by_runtime=True))
+        }
+        
+        return status
+    
+    def get_optimal_models(self, prefer_memory_efficient: bool = False) -> List[Dict[str, Any]]:
+        """Get optimal model recommendations based on detected runtime."""
+        optimal_runtime = runtime_manager.get_optimal_runtime(prefer_memory_efficient)
+        available_combinations = self.get_available_combinations(filter_by_runtime=True)
+        
+        # Filter for combinations that work with the optimal runtime
+        runtime_info = runtime_manager.detect_runtimes()
+        available_runtimes = {name for name, info in runtime_info.items() if info.available}
+        
+        optimal_models = []
+        for combo in available_combinations:
+            # Check if this combination is compatible with optimal runtime
+            backend_reqs = set(combo['model_data'].get('backends', {})
+                             .get(combo['backend'], {})
+                             .get('runtime_requirements', []))
+            quant_reqs = set(combo['quant_data'].get('runtime_requirements', backend_reqs))
+            
+            if optimal_runtime in quant_reqs:
+                optimal_models.append({
+                    **combo,
+                    'optimal_for_runtime': optimal_runtime,
+                    'performance_tier': runtime_info[optimal_runtime].performance_tier
+                })
+        
+        # Sort by model quality and performance
+        optimal_models.sort(key=lambda x: (
+            x['performance_tier'],  # Lower is better
+            'int8' in x['quantization'],  # Prefer FP16 over INT8
+            x['model']
+        ))
+        
+        return optimal_models
     
     def _get_display_name(self, model: str, backend: str, quantization: str) -> str:
         """Generate display name for model combination."""

@@ -9,19 +9,39 @@ models:
     backends:
       pytorch:
         base_model: "runwayml/stable-diffusion-v1-5"
+        runtime_requirements: ["pytorch-cuda", "pytorch-mps", "pytorch-cpu"]
         quantizations:
           fp16:
-            memory: "~4GB VRAM"
+            memory: "~2GB VRAM"
             description: "Full precision, best quality"
             available: true
+            runtime_requirements: ["pytorch-cuda", "pytorch-mps"]
+          int8:
+            memory: "~1GB VRAM"
+            description: "TorchAO quantized, good quality/memory balance"
+            available: true
+            model_path: "imgailab/sd15-torch-int8"
+            runtime_requirements: ["pytorch-cuda", "pytorch-mps"]
       onnx:
         base_model: "runwayml/stable-diffusion-v1-5"
+        runtime_requirements: ["onnx-cpu", "onnx-cuda", "onnx-tensorrt", "onnx-openvino"]
         quantizations:
           fp32:
             memory: "~4GB"
             description: "ONNX FP32, CPU/GPU compatible, controlled repo"
             available: true
-            model_path: "Mitchins/sd15-onnx-cpu"
+            model_path: "imgailab/sd15-onnx-cpu"
+            runtime_requirements: ["onnx-cpu", "onnx-cuda", "onnx-tensorrt", "onnx-openvino"]
+      coreml:
+        base_model: "runwayml/stable-diffusion-v1-5"
+        runtime_requirements: ["coreml"]
+        quantizations:
+          fp16:
+            memory: "~2GB Unified Memory"
+            description: "CoreML FP16, Apple Silicon optimized"
+            available: false
+            note: "Future implementation using swift-coreml-diffusers"
+            runtime_requirements: ["coreml"]
 
   sdxl:
     name: "Stable Diffusion XL"
@@ -33,43 +53,84 @@ models:
     backends:
       pytorch:
         base_model: "stabilityai/stable-diffusion-xl-base-1.0"
+        runtime_requirements: ["pytorch-cuda", "pytorch-mps"]
         quantizations:
           fp16:
-            memory: "~8GB VRAM"
+            memory: "~6.5GB VRAM"
             description: "Full quality, GPU required"
             available: true
+            runtime_requirements: ["pytorch-cuda", "pytorch-mps"]
+          int8:
+            memory: "~3.5GB VRAM"
+            description: "TorchAO quantized, good quality/memory balance"
+            available: true
+            model_path: "imgailab/sdxl-torch-int8"
+            runtime_requirements: ["pytorch-cuda", "pytorch-mps"]
       onnx:
         base_model: "stabilityai/stable-diffusion-xl-base-1.0"
+        runtime_requirements: ["onnx-cpu", "onnx-cuda", "onnx-tensorrt", "onnx-openvino"]
         quantizations:
           fp32:
             memory: "~12GB"
             description: "ONNX FP32, CPU/GPU compatible, controlled repo"
             available: true
-            model_path: "Mitchins/sdxl-onnx-cpu"
+            model_path: "imgailab/sdxl-onnx-cpu"
+            runtime_requirements: ["onnx-cpu", "onnx-cuda", "onnx-tensorrt", "onnx-openvino"]
+      coreml:
+        base_model: "stabilityai/stable-diffusion-xl-base-1.0"
+        runtime_requirements: ["coreml"]
+        quantizations:
+          fp16:
+            memory: "~6GB Unified Memory"
+            description: "CoreML FP16, Apple Silicon optimized"
+            available: false
+            note: "Future implementation using swift-coreml-diffusers"
+            runtime_requirements: ["coreml"]
 
   sdxl-turbo:
     name: "Stable Diffusion XL Turbo"
     description: "Fast SDXL variant, fewer steps needed"
     supports_negative_prompt: true
-    default_resolution: 1024
+    default_resolution: 512
     min_resolution: 512
-    max_resolution: 1024
+    max_resolution: 768
     backends:
       pytorch:
         base_model: "stabilityai/sdxl-turbo"
+        runtime_requirements: ["pytorch-cuda", "pytorch-mps"]
         quantizations:
           fp16:
-            memory: "~8GB VRAM"
+            memory: "~6.5GB VRAM"
             description: "Fast generation, fewer steps"
             available: true
+            runtime_requirements: ["pytorch-cuda", "pytorch-mps"]
+          int8:
+            memory: "~3.5GB VRAM"
+            description: "TorchAO quantized, fast generation"
+            available: true
+            model_path: "imgailab/sdxl-turbo-torch-int8"
+            runtime_requirements: ["pytorch-cuda", "pytorch-mps"]
       onnx:
         base_model: "stabilityai/sdxl-turbo"
+        runtime_requirements: ["onnx-cpu", "onnx-cuda", "onnx-tensorrt", "onnx-openvino"]
         quantizations:
           fp32:
             memory: "~12GB"
             description: "ONNX FP32, CPU/GPU compatible"
+            available: true
+            model_path: "imgailab/sdxl-turbo-onnx-cpu"
+            note: "ONNX model successfully created after clearing disk space"
+            runtime_requirements: ["onnx-cpu", "onnx-cuda", "onnx-tensorrt", "onnx-openvino"]
+      coreml:
+        base_model: "stabilityai/sdxl-turbo"
+        runtime_requirements: ["coreml"]
+        quantizations:
+          fp16:
+            memory: "~6GB Unified Memory"
+            description: "CoreML FP16, Apple Silicon optimized, fast inference"
             available: false
-            note: "Creation failed due to disk space constraints"
+            note: "Future implementation using swift-coreml-diffusers"
+            runtime_requirements: ["coreml"]
 
   flux1:
     name: "FLUX.1 Schnell"
@@ -81,22 +142,39 @@ models:
     backends:
       pytorch:
         base_model: "black-forest-labs/FLUX.1-schnell"
+        runtime_requirements: ["pytorch-cuda", "pytorch-mps"]
         quantizations:
           fp16:
-            memory: "~12GB VRAM"
+            memory: "~24GB VRAM"
             description: "Best quality for complex artistic prompts"
             available: true
+            runtime_requirements: ["pytorch-cuda"]
+          int8:
+            memory: "~12GB VRAM"
+            description: "TorchAO quantized, good balance for complex prompts"
+            available: true
+            model_path: "imgailab/flux1-torch-int8"
+            runtime_requirements: ["pytorch-cuda", "pytorch-mps"]
+      # Note: FLUX.1 ONNX not yet supported by optimum library
+      # Note: FLUX.1 CoreML not yet available
 
-# Runtime mapping - how legacy model IDs map to config
+# Router ID mapping - how API model IDs map to internal config
 model_id_mapping:
-  # Working models only
+  # FP16 models
   "sd15": ["sd15", "pytorch", "fp16"]
   "sd15-onnx": ["sd15", "onnx", "fp32"]
   "sdxl": ["sdxl", "pytorch", "fp16"] 
   "sdxl-onnx": ["sdxl", "onnx", "fp32"]
   "sdxl-turbo": ["sdxl-turbo", "pytorch", "fp16"]
   "sdxl-turbo-onnx": ["sdxl-turbo", "onnx", "fp32"]
+  "sdxl-turbo-onnx:fp32": ["sdxl-turbo", "onnx", "fp32"]  # Alternative format
   "flux1-schnell": ["flux1", "pytorch", "fp16"]
+  
+  # INT8 models
+  "sd15-pytorch:int8": ["sd15", "pytorch", "int8"]
+  "sdxl-pytorch:int8": ["sdxl", "pytorch", "int8"]
+  "sdxl-turbo-pytorch:int8": ["sdxl-turbo", "pytorch", "int8"]
+  "flux1-pytorch:int8": ["flux1", "pytorch", "int8"]
 
 # UI display configuration
 ui_config:
