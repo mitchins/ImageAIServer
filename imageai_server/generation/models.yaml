@@ -32,6 +32,16 @@ models:
             available: true
             model_path: "imgailab/sd15-onnx-cpu"
             runtime_requirements: ["onnx-cpu", "onnx-cuda", "onnx-tensorrt", "onnx-openvino"]
+      tensorrt:
+        base_model: "runwayml/stable-diffusion-v1-5"
+        runtime_requirements: ["onnx-tensorrt"]
+        quantizations:
+          fp16:
+            memory: "~3GB VRAM"
+            description: "TensorRT FP16, 2-3x faster than ONNX CUDA, dynamic engines"
+            available: true
+            model_path: "imgailab/sd15-onnx-cpu"  # Same ONNX model, TensorRT optimization
+            runtime_requirements: ["onnx-tensorrt"]
       coreml:
         base_model: "runwayml/stable-diffusion-v1-5"
         runtime_requirements: ["coreml"]
@@ -76,6 +86,16 @@ models:
             available: true
             model_path: "imgailab/sdxl-onnx-cpu"
             runtime_requirements: ["onnx-cpu", "onnx-cuda", "onnx-tensorrt", "onnx-openvino"]
+      tensorrt:
+        base_model: "stabilityai/stable-diffusion-xl-base-1.0"
+        runtime_requirements: ["onnx-tensorrt"]
+        quantizations:
+          fp16:
+            memory: "~8GB VRAM"
+            description: "TensorRT FP16, 2-3x faster than ONNX CUDA, dynamic engines"
+            available: true
+            model_path: "imgailab/sdxl-onnx-cpu"  # Same ONNX model, TensorRT optimization
+            runtime_requirements: ["onnx-tensorrt"]
       coreml:
         base_model: "stabilityai/stable-diffusion-xl-base-1.0"
         runtime_requirements: ["coreml"]
@@ -121,6 +141,16 @@ models:
             model_path: "imgailab/sdxl-turbo-onnx-cpu"
             note: "ONNX model successfully created after clearing disk space"
             runtime_requirements: ["onnx-cpu", "onnx-cuda", "onnx-tensorrt", "onnx-openvino"]
+      tensorrt:
+        base_model: "stabilityai/sdxl-turbo"
+        runtime_requirements: ["onnx-tensorrt"]
+        quantizations:
+          fp16:
+            memory: "~8GB VRAM"
+            description: "TensorRT FP16, 2-3x faster than ONNX CUDA, dynamic engines, 1-step generation"
+            available: true
+            model_path: "imgailab/sdxl-turbo-onnx-cpu"  # Same ONNX model, TensorRT optimization
+            runtime_requirements: ["onnx-tensorrt"]
       coreml:
         base_model: "stabilityai/sdxl-turbo"
         runtime_requirements: ["coreml"]
@@ -170,6 +200,11 @@ model_id_mapping:
   "sdxl-turbo-onnx:fp32": ["sdxl-turbo", "onnx", "fp32"]  # Alternative format
   "flux1-schnell": ["flux1", "pytorch", "fp16"]
   
+  # TensorRT models
+  "sd15-tensorrt": ["sd15", "tensorrt", "fp16"]
+  "sdxl-tensorrt": ["sdxl", "tensorrt", "fp16"]
+  "sdxl-turbo-tensorrt": ["sdxl-turbo", "tensorrt", "fp16"]
+  
   # INT8 models
   "sd15-pytorch:int8": ["sd15", "pytorch", "int8"]
   "sdxl-pytorch:int8": ["sdxl", "pytorch", "int8"]
@@ -181,6 +216,7 @@ ui_config:
   backend_display:
     pytorch: "PyTorch (GPU)"
     onnx: "ONNX (CPU/GPU)"
+    tensorrt: "TensorRT (GPU)"
   
   quantization_display:
     fp16: "FP16"

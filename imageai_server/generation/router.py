@@ -8,6 +8,7 @@ import numpy as np
 from ..shared.diffusion_model_loader import diffusion_loader
 # Legacy imports removed - using model_config now
 from .model_config import model_config
+from .runtime_manager import runtime_manager
 
 try:
     import onnxruntime as ort
@@ -43,6 +44,19 @@ def choose_onnx_providers():
         providers.append("CUDAExecutionProvider")
     providers.append("CPUExecutionProvider")
     return providers
+
+# Enhanced ONNX provider selection using runtime_manager
+def get_optimal_onnx_config():
+    """Get optimal ONNX providers and configuration using runtime_manager"""
+    optimal_runtime = runtime_manager.get_optimal_runtime()
+    
+    # Check if optimal runtime is ONNX-based
+    if optimal_runtime.startswith("onnx-"):
+        config = runtime_manager.get_runtime_config(optimal_runtime)
+        return config["providers"]
+    
+    # Fallback to legacy provider selection
+    return choose_onnx_providers()
 
 router = APIRouter()
 
@@ -162,6 +176,76 @@ def get_sdxl_turbo_onnx_fp32():
         )
         print(f"✅ [DEBUG] SDXL-Turbo ONNX loaded successfully")
     return _sdxl_turbo_onnx
+
+# TensorRT-Optimized Model Loaders (with dynamic engines support)
+_sd15_tensorrt = None
+_sdxl_tensorrt = None 
+_sdxl_turbo_tensorrt = None
+
+def get_sd15_tensorrt():
+    """Load SD1.5 with TensorRT optimization and dynamic engines"""
+    global _sd15_tensorrt
+    if _sd15_tensorrt is None:
+        if not ONNX_AVAILABLE:
+            raise HTTPException(
+                status_code=503,
+                detail="ONNX is not available. Install onnxruntime to use TensorRT models."
+            )
+        
+        # Use runtime_manager for optimal TensorRT configuration
+        providers = get_optimal_onnx_config()
+        print(f"🚀 [DEBUG] Loading SD1.5 TensorRT with providers: {providers}")
+        
+        _sd15_tensorrt = OnnxStableDiffusionPipeline.from_pretrained(
+            "imgailab/sd15-onnx-cpu",
+            provider=providers
+        )
+        print(f"✅ [DEBUG] SD1.5 TensorRT loaded successfully")
+    return _sd15_tensorrt
+
+def get_sdxl_tensorrt():
+    """Load SDXL with TensorRT optimization and dynamic engines"""
+    global _sdxl_tensorrt
+    if _sdxl_tensorrt is None:
+        if not ONNX_AVAILABLE or OnnxStableDiffusionXLPipeline is None:
+            raise HTTPException(
+                status_code=503,
+                detail="ONNX SDXL is not available. Install optimum[onnxruntime] to use TensorRT SDXL models."
+            )
+            
+        # Use runtime_manager for optimal TensorRT configuration
+        providers = get_optimal_onnx_config()
+        print(f"🚀 [DEBUG] Loading SDXL TensorRT with providers: {providers}")
+        
+        _sdxl_tensorrt = OnnxStableDiffusionXLPipeline.from_pretrained(
+            "imgailab/sdxl-onnx-cpu",
+            provider=providers
+        )
+        print(f"✅ [DEBUG] SDXL TensorRT loaded successfully")
+    return _sdxl_tensorrt
+
+def get_sdxl_turbo_tensorrt():
+    """Load SDXL-Turbo with TensorRT optimization and dynamic engines"""
+    global _sdxl_turbo_tensorrt
+    if _sdxl_turbo_tensorrt is None:
+        if not ONNX_AVAILABLE or OnnxStableDiffusionXLPipeline is None:
+            raise HTTPException(
+                status_code=503,
+                detail="ONNX SDXL is not available. Install optimum[onnxruntime] to use TensorRT SDXL models."
+            )
+            
+        # Use runtime_manager for optimal TensorRT configuration
+        providers = get_optimal_onnx_config()
+        model_path = "imgailab/sdxl-turbo-onnx-cpu"
+        print(f"🚀 [DEBUG] Loading SDXL-Turbo TensorRT from: {model_path}")
+        print(f"🚀 [DEBUG] Using providers: {providers}")
+        
+        _sdxl_turbo_tensorrt = OnnxStableDiffusionXLPipeline.from_pretrained(
+            model_path,
+            provider=providers
+        )
+        print(f"✅ [DEBUG] SDXL-Turbo TensorRT loaded successfully")
+    return _sdxl_turbo_tensorrt
 
 # INT8 Model Loaders
 _sd15_int8 = None
@@ -613,6 +697,10 @@ PIPE_REGISTRY = {
     **({'sd15-onnx': (get_sd15_onnx_fp32, _gen_sd15_onnx)} if ONNX_AVAILABLE else {}),
     **({'sdxl-onnx': (get_sdxl_onnx_fp32, _gen_sdxl_onnx)} if ONNX_AVAILABLE and OnnxStableDiffusionXLPipeline else {}),
     **({'sdxl-turbo-onnx': (get_sdxl_turbo_onnx_fp32, _gen_sdxl_turbo_onnx)} if ONNX_AVAILABLE and OnnxStableDiffusionXLPipeline else {}),
+    # TensorRT models - Same ONNX repos but with TensorRT optimization
+    **({'sd15-tensorrt': (get_sd15_tensorrt, _gen_sd15_onnx)} if ONNX_AVAILABLE else {}),
+    **({'sdxl-tensorrt': (get_sdxl_tensorrt, _gen_sdxl_onnx)} if ONNX_AVAILABLE and OnnxStableDiffusionXLPipeline else {}),
+    **({'sdxl-turbo-tensorrt': (get_sdxl_turbo_tensorrt, _gen_sdxl_turbo_onnx)} if ONNX_AVAILABLE and OnnxStableDiffusionXLPipeline else {}),
     # INT8 models
     "sd15-pytorch:int8": (get_sd15_pytorch_int8, _gen_sd15_int8),
     "sdxl-pytorch:int8": (get_sdxl_pytorch_int8, _gen_sdxl_int8),
