@@ -206,7 +206,9 @@ onnx/embed_tokens_quantized.onnx_data_1
 onnx/vision_encoder.onnx_data
 mcp-server/node_modules/
 imageai_server/utils/mcp-server/node_modules/
+# Test models for CoreML
 onnx_models/
 onnx_models_*
 coreml_models/
 coreml_test/
+sdxl_turbo_coreml_hf/
