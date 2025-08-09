@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 import torch
-from diffusers import StableDiffusionXLPipeline, AutoPipelineForText2Image, FluxPipeline, DiffusionPipeline, StableDiffusionPipeline, UNet2DConditionModel, GGUFQuantizationConfig, FluxTransformer2DModel
+from diffusers import StableDiffusionXLPipeline, AutoPipelineForText2Image, FluxPipeline, DiffusionPipeline, StableDiffusionPipeline, UNet2DConditionModel, FluxTransformer2DModel
 import numpy as np
 from ..shared.diffusion_model_loader import diffusion_loader
 # Legacy imports removed - using model_config now
@@ -25,6 +25,22 @@ except ImportError:
     OnnxStableDiffusionPipeline = None
     OnnxStableDiffusionXLPipeline = None
     ONNX_AVAILABLE = False
+
+# CoreML Support (Apple Silicon only)
+try:
+    import coremltools
+    from python_coreml_stable_diffusion.pipeline import get_coreml_pipe
+    from diffusers import StableDiffusionPipeline
+    import platform
+    # Only enable on macOS ARM64 (Apple Silicon)
+    COREML_AVAILABLE = (platform.system() == "Darwin" and platform.machine() == "arm64")
+    if COREML_AVAILABLE:
+        print("🍎 CoreML available on Apple Silicon")
+    else:
+        print("⚠️  CoreML tools installed but not on Apple Silicon")
+except ImportError:
+    get_coreml_pipe = None
+    COREML_AVAILABLE = False
 
 # Helper to choose device (CUDA or MPS)
 def choose_device():
@@ -246,6 +262,114 @@ def get_sdxl_turbo_tensorrt():
         )
         print(f"✅ [DEBUG] SDXL-Turbo TensorRT loaded successfully")
     return _sdxl_turbo_tensorrt
+
+# CoreML Model Loaders (Apple Silicon only)
+_sd15_coreml = None
+_sdxl_coreml = None
+
+def get_sd15_coreml():
+    """Load SD1.5 with Apple CoreML optimization (Apple Silicon only)"""
+    global _sd15_coreml
+    if _sd15_coreml is None:
+        if not COREML_AVAILABLE:
+            raise HTTPException(
+                status_code=503,
+                detail="CoreML is not available. Requires Apple Silicon (M1/M2/M3/M4) and CoreML tools."
+            )
+        
+        print(f"🍎 [DEBUG] Loading SD1.5 CoreML...")
+        
+        # Download Apple's pre-converted CoreML model
+        from huggingface_hub import snapshot_download
+        from pathlib import Path
+        import os
+        
+        model_id = "apple/coreml-stable-diffusion-v1-5"
+        variant = "original/packages"
+        
+        # Create local cache directory
+        cache_dir = Path("./coreml_models")
+        cache_dir.mkdir(exist_ok=True)
+        
+        local_model_path = cache_dir / "sd15_coreml"
+        
+        if not local_model_path.exists():
+            print(f"📥 [DEBUG] Downloading CoreML SD1.5 from {model_id}...")
+            snapshot_download(
+                model_id,
+                allow_patterns=f"{variant}/*",
+                local_dir=local_model_path,
+                cache_dir=None  # Don't use default cache, use our local path
+            )
+            print(f"✅ [DEBUG] CoreML SD1.5 downloaded to {local_model_path}")
+        
+        # Create a base PyTorch pipeline for conversion
+        base_pipeline = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5",
+            use_safetensors=True
+        )
+        
+        # Convert to CoreML using Apple's official tools with local path
+        _sd15_coreml = get_coreml_pipe(
+            pytorch_pipe=base_pipeline,
+            mlpackages_dir=str(local_model_path / variant),
+            model_version="runwayml/stable-diffusion-v1-5",
+            compute_unit="CPU_AND_GPU"  # Use both CPU and GPU on Apple Silicon
+        )
+        print(f"✅ [DEBUG] SD1.5 CoreML loaded successfully")
+    return _sd15_coreml
+
+def get_sdxl_coreml():
+    """Load SDXL with Apple CoreML optimization (Apple Silicon only)"""
+    global _sdxl_coreml
+    if _sdxl_coreml is None:
+        if not COREML_AVAILABLE:
+            raise HTTPException(
+                status_code=503,
+                detail="CoreML is not available. Requires Apple Silicon (M1/M2/M3/M4) and CoreML tools."
+            )
+        
+        print(f"🍎 [DEBUG] Loading SDXL CoreML...")
+        
+        # Download Apple's pre-converted CoreML model
+        from huggingface_hub import snapshot_download
+        from pathlib import Path
+        import os
+        
+        model_id = "apple/coreml-stable-diffusion-xl-base"
+        variant = "packages"  # SDXL uses 'packages' directly, not 'original/packages'
+        
+        # Create local cache directory
+        cache_dir = Path("./coreml_models")
+        cache_dir.mkdir(exist_ok=True)
+        
+        local_model_path = cache_dir / "sdxl_coreml"
+        
+        if not local_model_path.exists():
+            print(f"📥 [DEBUG] Downloading CoreML SDXL from {model_id}...")
+            snapshot_download(
+                model_id,
+                allow_patterns=f"{variant}/*",
+                local_dir=local_model_path,
+                cache_dir=None  # Don't use default cache, use our local path
+            )
+            print(f"✅ [DEBUG] CoreML SDXL downloaded to {local_model_path}")
+        
+        # Create a base PyTorch pipeline for conversion  
+        base_pipeline = StableDiffusionXLPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0",
+            use_safetensors=True
+        )
+        
+        # Convert to CoreML using Apple's official tools with local path
+        _sdxl_coreml = get_coreml_pipe(
+            pytorch_pipe=base_pipeline,
+            mlpackages_dir=str(local_model_path / variant),
+            model_version="stabilityai/stable-diffusion-xl-base-1.0",
+            compute_unit="ALL"  # Use all compute units on Apple Silicon
+        )
+        print(f"✅ [DEBUG] SDXL CoreML loaded successfully")
+    return _sdxl_coreml
 
 # INT8 Model Loaders
 _sd15_int8 = None
@@ -567,6 +691,84 @@ def _gen_flux1_int8(pipe, prompt, **_):
         max_sequence_length=256
     ).images[0]]
 
+# CoreML adapter functions
+def _gen_sd15_coreml(pipe, prompt, width, height, negative_prompt, n, **_):
+    """Generate images using Apple CoreML pipeline"""
+    imgs = []
+    for _ in range(n):
+        # Apple CoreML pipeline uses similar interface to diffusers
+        imgs.append(pipe(
+            prompt=prompt,
+            negative_prompt=negative_prompt or "",
+            width=width,
+            height=height,
+            num_inference_steps=20,
+            guidance_scale=7.5
+        ).images[0])
+    return imgs
+
+def _gen_sdxl_coreml(pipe, prompt, width, height, negative_prompt, n, **_):
+    """Generate images using Apple CoreML SDXL pipeline - optimized for sharpness"""
+    imgs = []
+    
+    # Import scheduler for better quality
+    from diffusers import DPMSolverMultistepScheduler
+
+    # Debug: verify SDXL VAE scaling factor (should be ~0.13025 for SDXL)
+    try:
+        sf = getattr(pipe.vae.config, "scaling_factor", None)
+        if sf is not None:
+            print(f"🍎 [DEBUG] SDXL VAE scaling_factor={sf} (expected ≈ 0.13025)")
+    except Exception:
+        print("🍎 [DEBUG] Could not access SDXL VAE scaling factor, assuming default")
+    
+    for _ in range(n):
+        # SDXL CoreML Optimization for Sharpness (based on expert advice):
+        # 1. Use DPM-Solver++ (Karras) scheduler instead of Euler for sharper results
+        # 2. Use 24-30 steps for optimal quality with DPM-Solver++
+        # 3. CFG 6.5-7.0 range (we're using 7.0)
+        # 4. Generate at native 1024x1024 when possible
+        # 5. Apple's models should already use full SDXL VAE (not TAESD)
+        
+        try:
+            # Set up DPM-Solver++ (Karras) scheduler for sharper results
+            original_scheduler = pipe.scheduler
+            pipe.scheduler = DPMSolverMultistepScheduler.from_config(
+                pipe.scheduler.config,
+                use_karras_sigmas=True,  # Karras noise schedule for better quality
+                algorithm_type="dpmsolver++",  # DPM-Solver++ variant
+            )
+            
+            result = pipe(
+                prompt=prompt,
+                negative_prompt=negative_prompt or "",
+                width=width,
+                height=height,
+                num_inference_steps=24,  # Optimal for DPM-Solver++ (Karras): 24-30 steps
+                guidance_scale=6.8,      # Sweet spot in 6.5-7.0 range for sharpness
+                generator=torch.Generator(device="cpu").manual_seed(42)  # Consistent results
+            )
+            
+            # Restore original scheduler
+            pipe.scheduler = original_scheduler
+            
+            imgs.append(result.images[0])
+            
+        except Exception as e:
+            # Fallback to original parameters if DPM-Solver++ fails
+            print(f"🍎 [DEBUG] DPM-Solver++ failed, falling back to default: {e}")
+            imgs.append(pipe(
+                prompt=prompt,
+                negative_prompt=negative_prompt or "",
+                width=width,
+                height=height,
+                num_inference_steps=20,
+                guidance_scale=7.0
+            ).images[0])
+    
+    return imgs
+
+
 # GGUF adapter functions removed - replaced by SafeTensors quantized models
 
 # Model metadata for frontend features
@@ -684,7 +886,30 @@ MODEL_METADATA = {
         "description": "TorchAO quantized, ~50% memory reduction for complex prompts",
         "memory_requirement": "~12GB VRAM",
         "quantization": "INT8"
-    }
+    },
+    # CoreML Models
+    "sd15-coreml": {
+        "engine": "coreml",
+        "supports_negative_prompt": True,
+        "max_resolution": 768,
+        "default_resolution": 512,
+        "min_resolution": 256,
+        "display_name": "Stable Diffusion 1.5 (Apple CoreML FP16)",
+        "description": "Apple Silicon optimized, Neural Engine acceleration",
+        "memory_requirement": "~2GB Unified Memory",
+        "quantization": "FP16"
+    },
+    "sdxl-coreml": {
+        "engine": "coreml",
+        "supports_negative_prompt": True,
+        "max_resolution": 1536,
+        "default_resolution": 1024,  # SDXL trained at 1024 - use native resolution for sharpness
+        "min_resolution": 512,
+        "display_name": "Stable Diffusion XL (Apple CoreML FP16) - Optimized",
+        "description": "Apple Silicon optimized with DPM-Solver++ for enhanced sharpness",
+        "memory_requirement": "~6GB Unified Memory",
+        "quantization": "FP16"
+    },
 }
 
 # Registry mapping model keys to (getter, adapter)
@@ -701,6 +926,9 @@ PIPE_REGISTRY = {
     **({'sd15-tensorrt': (get_sd15_tensorrt, _gen_sd15_onnx)} if ONNX_AVAILABLE else {}),
     **({'sdxl-tensorrt': (get_sdxl_tensorrt, _gen_sdxl_onnx)} if ONNX_AVAILABLE and OnnxStableDiffusionXLPipeline else {}),
     **({'sdxl-turbo-tensorrt': (get_sdxl_turbo_tensorrt, _gen_sdxl_turbo_onnx)} if ONNX_AVAILABLE and OnnxStableDiffusionXLPipeline else {}),
+    # CoreML models - Apple Silicon optimized 
+    **({'sd15-coreml': (get_sd15_coreml, _gen_sd15_coreml)} if COREML_AVAILABLE else {}),
+    **({'sdxl-coreml': (get_sdxl_coreml, _gen_sdxl_coreml)} if COREML_AVAILABLE else {}),
     # INT8 models
     "sd15-pytorch:int8": (get_sd15_pytorch_int8, _gen_sd15_int8),
     "sdxl-pytorch:int8": (get_sdxl_pytorch_int8, _gen_sdxl_int8),

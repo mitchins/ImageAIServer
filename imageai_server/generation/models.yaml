@@ -48,9 +48,9 @@ models:
         quantizations:
           fp16:
             memory: "~2GB Unified Memory"
-            description: "CoreML FP16, Apple Silicon optimized"
-            available: false
-            note: "Future implementation using swift-coreml-diffusers"
+            description: "CoreML FP16, Apple Silicon optimized, Neural Engine acceleration"
+            available: true
+            model_path: "apple/coreml-stable-diffusion-v1-5"  # Apple's official CoreML model
             runtime_requirements: ["coreml"]
 
   sdxl:
@@ -102,9 +102,9 @@ models:
         quantizations:
           fp16:
             memory: "~6GB Unified Memory"
-            description: "CoreML FP16, Apple Silicon optimized"
-            available: false
-            note: "Future implementation using swift-coreml-diffusers"
+            description: "CoreML FP16, Apple Silicon optimized, Neural Engine acceleration"
+            available: true
+            model_path: "apple/coreml-stable-diffusion-xl-base"  # Apple's official CoreML SDXL
             runtime_requirements: ["coreml"]
 
   sdxl-turbo:
@@ -157,9 +157,9 @@ models:
         quantizations:
           fp16:
             memory: "~6GB Unified Memory"
-            description: "CoreML FP16, Apple Silicon optimized, fast inference"
+            description: "CoreML FP16, Apple Silicon optimized, 1-step inference"
             available: false
-            note: "Future implementation using swift-coreml-diffusers"
+            note: "Conversion has batch size compatibility issues - use ONNX or TensorRT instead"
             runtime_requirements: ["coreml"]
 
   flux1:
@@ -205,6 +205,10 @@ model_id_mapping:
   "sdxl-tensorrt": ["sdxl", "tensorrt", "fp16"]
   "sdxl-turbo-tensorrt": ["sdxl-turbo", "tensorrt", "fp16"]
   
+  # CoreML models
+  "sd15-coreml": ["sd15", "coreml", "fp16"]
+  "sdxl-coreml": ["sdxl", "coreml", "fp16"]
+  
   # INT8 models
   "sd15-pytorch:int8": ["sd15", "pytorch", "int8"]
   "sdxl-pytorch:int8": ["sdxl", "pytorch", "int8"]
@@ -217,6 +221,7 @@ ui_config:
     pytorch: "PyTorch (GPU)"
     onnx: "ONNX (CPU/GPU)"
     tensorrt: "TensorRT (GPU)"
+    coreml: "CoreML (Apple Silicon)"
   
   quantization_display:
     fp16: "FP16"

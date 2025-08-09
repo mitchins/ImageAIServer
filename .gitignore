@@ -208,3 +208,5 @@ mcp-server/node_modules/
 imageai_server/utils/mcp-server/node_modules/
 onnx_models/
 onnx_models_*
+coreml_models/
+coreml_test/
