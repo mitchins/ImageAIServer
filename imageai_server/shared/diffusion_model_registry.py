@@ -80,11 +80,11 @@ class DiffusionModelRegistry:
         sd15_pytorch_fp16 = WorkingSet(
             name="pytorch_fp16",
             components={
-                Component.UNET: ComponentSpec("stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="unet", quantization=Quantization.FP16),
-                Component.VAE: ComponentSpec("stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="vae", quantization=Quantization.FP16),
-                Component.TEXT_ENCODER: ComponentSpec("stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="text_encoder", quantization=Quantization.FP16),
-                Component.SCHEDULER: ComponentSpec("stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="scheduler"),
-                Component.TOKENIZER: ComponentSpec("stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="tokenizer"),
+                Component.UNET: ComponentSpec("runwayml/stable-diffusion-v1-5", subfolder="unet", quantization=Quantization.FP16),
+                Component.VAE: ComponentSpec("runwayml/stable-diffusion-v1-5", subfolder="vae", quantization=Quantization.FP16),
+                Component.TEXT_ENCODER: ComponentSpec("runwayml/stable-diffusion-v1-5", subfolder="text_encoder", quantization=Quantization.FP16),
+                Component.SCHEDULER: ComponentSpec("runwayml/stable-diffusion-v1-5", subfolder="scheduler"),
+                Component.TOKENIZER: ComponentSpec("runwayml/stable-diffusion-v1-5", subfolder="tokenizer"),
             },
             optimal_settings={
                 "num_inference_steps": 20,
@@ -99,14 +99,14 @@ class DiffusionModelRegistry:
             description="Standard PyTorch FP16 - Good quality, GPU required"
         )
         
-        sd15_onnx_fp16 = WorkingSet(
-            name="onnx_fp16",
+        sd15_onnx_fp32 = WorkingSet(
+            name="onnx_fp32",
             components={
-                Component.UNET: ComponentSpec("Mitchins/sd15-onnx-fp16", filename="unet/model.onnx", quantization=Quantization.FP16, backend=Backend.ONNX),
-                Component.VAE: ComponentSpec("Mitchins/sd15-onnx-fp16", filename="vae_decoder/model.onnx", quantization=Quantization.FP16, backend=Backend.ONNX),
-                Component.TEXT_ENCODER: ComponentSpec("Mitchins/sd15-onnx-fp16", filename="text_encoder/model.onnx", quantization=Quantization.FP16, backend=Backend.ONNX),
-                Component.SCHEDULER: ComponentSpec("Mitchins/sd15-onnx-fp16", subfolder="scheduler", backend=Backend.ONNX),
-                Component.TOKENIZER: ComponentSpec("Mitchins/sd15-onnx-fp16", subfolder="tokenizer", backend=Backend.ONNX),
+                Component.UNET: ComponentSpec("imgailab/sd15-onnx-cpu", filename="unet/model.onnx", quantization=Quantization.FP32, backend=Backend.ONNX),
+                Component.VAE: ComponentSpec("imgailab/sd15-onnx-cpu", filename="vae_decoder/model.onnx", quantization=Quantization.FP32, backend=Backend.ONNX),
+                Component.TEXT_ENCODER: ComponentSpec("imgailab/sd15-onnx-cpu", filename="text_encoder/model.onnx", quantization=Quantization.FP32, backend=Backend.ONNX),
+                Component.SCHEDULER: ComponentSpec("imgailab/sd15-onnx-cpu", subfolder="scheduler", backend=Backend.ONNX),
+                Component.TOKENIZER: ComponentSpec("imgailab/sd15-onnx-cpu", subfolder="tokenizer", backend=Backend.ONNX),
             },
             optimal_settings={
                 "num_inference_steps": 20,
@@ -118,38 +118,17 @@ class DiffusionModelRegistry:
                 "default_resolution": 512,
                 "requires_gpu": False
             },
-            description="ONNX FP16 CPU - Best quality, Raspberry Pi compatible"
+            description="ONNX FP32 CPU - Best quality, CPU compatible"
         )
         
-        sd15_onnx_int8 = WorkingSet(
-            name="onnx_int8",
-            components={
-                Component.UNET: ComponentSpec("Mitchins/sd15-onnx-int8", filename="unet/model.onnx", quantization=Quantization.INT8, backend=Backend.ONNX),
-                Component.VAE: ComponentSpec("Mitchins/sd15-onnx-int8", filename="vae_decoder/model.onnx", quantization=Quantization.INT8, backend=Backend.ONNX),
-                Component.TEXT_ENCODER: ComponentSpec("Mitchins/sd15-onnx-int8", filename="text_encoder/model.onnx", quantization=Quantization.INT8, backend=Backend.ONNX),
-                Component.SCHEDULER: ComponentSpec("Mitchins/sd15-onnx-int8", subfolder="scheduler", backend=Backend.ONNX),
-                Component.TOKENIZER: ComponentSpec("Mitchins/sd15-onnx-int8", subfolder="tokenizer", backend=Backend.ONNX),
-            },
-            optimal_settings={
-                "num_inference_steps": 25,  # Slightly more steps for INT8
-                "guidance_scale": 8.0,      # Higher guidance for INT8
-                "provider": "CPUExecutionProvider"
-            },
-            constraints={
-                "max_resolution": 768,
-                "default_resolution": 512,
-                "requires_gpu": False
-            },
-            description="ONNX INT8 CPU - Fastest inference, optimized for speed"
-        )
         
         self.models["sd15"] = ModelDefinition(
             model_id="sd15",
             display_name="Stable Diffusion 1.5",
-            base_repo="stable-diffusion-v1-5/stable-diffusion-v1-5",
+            base_repo="runwayml/stable-diffusion-v1-5",
             architecture="sd15",
-            working_sets=[sd15_pytorch_fp16, sd15_onnx_fp16, sd15_onnx_int8],
-            default_working_set="onnx_fp16",  # ONNX FP16 as default for best quality/performance balance
+            working_sets=[sd15_pytorch_fp16, sd15_onnx_fp32],
+            default_working_set="onnx_fp32",  # ONNX FP32 as default for CPU compatibility
             supports_negative_prompt=True,
             max_resolution=768,
             default_resolution=512,

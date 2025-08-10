@@ -12,20 +12,69 @@ import json
 import time
 import sys
 import os
+import subprocess
+import socket
+from contextlib import closing
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-# Test configuration
+
+def find_free_port():
+    """Find a free port to use for testing."""
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        s.bind(('', 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return s.getsockname()[1]
+
+
+@pytest.fixture(scope="module")
+def test_server():
+    """Start the test server before running tests and stop it after."""
+    port = find_free_port()
+    base_url = f"http://localhost:{port}"
+    
+    # Start the server
+    process = subprocess.Popen([
+        sys.executable, "-c",
+        f"""
+import uvicorn
+from imageai_server.main import app
+uvicorn.run(app, host='127.0.0.1', port={port}, log_level='error')
+"""
+    ])
+    
+    # Wait for server to start
+    max_retries = 30
+    for _ in range(max_retries):
+        try:
+            response = requests.get(f"{base_url}/v1/health", timeout=1)
+            if response.status_code == 200:
+                break
+        except:
+            pass
+        time.sleep(0.5)
+    else:
+        process.terminate()
+        pytest.fail("Server failed to start within 15 seconds")
+    
+    yield base_url
+    
+    # Stop the server
+    process.terminate()
+    process.wait(timeout=5)
+
+
+# Test configuration - will be overridden by fixture
 BASE_URL = "http://localhost:8001"
 
 
 class TestVisionModelsEndpoint:
     """Test the /v1/vision-models endpoint."""
     
-    def test_vision_models_endpoint_exists(self):
+    def test_vision_models_endpoint_exists(self, test_server):
         """Test that the vision models endpoint is accessible."""
-        response = requests.get(f"{BASE_URL}/v1/vision-models")
+        response = requests.get(f"{test_server}/v1/vision-models")
         assert response.status_code == 200
         
         data = response.json()
@@ -34,9 +83,9 @@ class TestVisionModelsEndpoint:
         assert data["object"] == "list"
         assert isinstance(data["data"], list)
     
-    def test_vision_models_structure(self):
+    def test_vision_models_structure(self, test_server):
         """Test that vision models have correct structure."""
-        response = requests.get(f"{BASE_URL}/v1/vision-models")
+        response = requests.get(f"{test_server}/v1/vision-models")
         data = response.json()
         
         if len(data["data"]) > 0:
@@ -49,9 +98,9 @@ class TestVisionModelsEndpoint:
             # Verify backend types
             assert model["backend"] in ["ONNX", "PyTorch/GGUF", "PyTorch"]
     
-    def test_vision_models_only_local(self):
+    def test_vision_models_only_local(self, test_server):
         """Test that only locally available models are listed."""
-        response = requests.get(f"{BASE_URL}/v1/vision-models")
+        response = requests.get(f"{test_server}/v1/vision-models")
         data = response.json()
         
         # This test verifies that the endpoint doesn't return models
@@ -62,13 +111,13 @@ class TestVisionModelsEndpoint:
             assert len(model["id"]) > 0
             assert "/" in model["id"] or ":" in model["id"]  # Valid model identifier
     
-    def test_vision_models_clean_descriptions(self):
+    def test_vision_models_clean_descriptions(self, test_server):
         """Test that model descriptions are clean and not verbose."""
-        response = requests.get(f"{BASE_URL}/v1/vision-models")
+        response = requests.get(f"{test_server}/v1/vision-models")
         data = response.json()
         
         # Check that descriptions are simple
-        allowed_descriptions = ["ONNX", "GGUF", "PyTorch"]
+        allowed_descriptions = ["ONNX", "GGUF", "PyTorch", "MLX"]
         
         for model in data["data"]:
             assert model["description"] in allowed_descriptions, \
@@ -78,9 +127,9 @@ class TestVisionModelsEndpoint:
 class TestBackendsEndpoint:
     """Test the /v1/backends endpoint."""
     
-    def test_backends_endpoint_exists(self):
+    def test_backends_endpoint_exists(self, test_server):
         """Test that the backends endpoint is accessible."""
-        response = requests.get(f"{BASE_URL}/v1/backends")
+        response = requests.get(f"{test_server}/v1/backends")
         assert response.status_code == 200
         
         data = response.json()
@@ -88,9 +137,9 @@ class TestBackendsEndpoint:
         assert "gpu" in data
         assert "status" in data
     
-    def test_backends_structure(self):
+    def test_backends_structure(self, test_server):
         """Test that backends endpoint has correct structure."""
-        response = requests.get(f"{BASE_URL}/v1/backends")
+        response = requests.get(f"{test_server}/v1/backends")
         data = response.json()
         
         # Check backends structure
@@ -105,9 +154,9 @@ class TestBackendsEndpoint:
             assert isinstance(backend["initialized"], bool)
             assert isinstance(backend["models_count"], int)
     
-    def test_gpu_info_structure(self):
+    def test_gpu_info_structure(self, test_server):
         """Test that GPU information has correct structure."""
-        response = requests.get(f"{BASE_URL}/v1/backends")
+        response = requests.get(f"{test_server}/v1/backends")
         data = response.json()
         
         gpu = data["gpu"]
@@ -199,25 +248,8 @@ class TestIntegrationScenarios:
             assert "status" in data
 
 
-@pytest.mark.skip(reason="Requires server to be running on localhost:8001")
-class TestLiveServer:
-    """Tests that require a live server (marked as skip by default)."""
-    
-    def test_server_health(self):
-        """Test that server is healthy and responding."""
-        try:
-            response = requests.get(f"{BASE_URL}/health", timeout=5)
-            assert response.status_code == 200
-        except requests.exceptions.RequestException:
-            pytest.skip("Server not running on localhost:8001")
 
 
 if __name__ == "__main__":
-    # Run tests with live server if available
-    try:
-        response = requests.get(f"{BASE_URL}/health", timeout=2)
-        print("Server detected, running integration tests...")
-        pytest.main([__file__, "-v", "-m", "not skip"])
-    except requests.exceptions.RequestException:
-        print("No server detected, running only unit-style tests...")
-        pytest.main([__file__, "-v", "-k", "not test_live_server"])
+    # Run all tests using the test_server fixture
+    pytest.main([__file__, "-v"])

@@ -436,24 +436,20 @@ async def list_vision_models():
         from .shared.model_identifier import ModelCatalog
         from .shared.model_types import get_available_model_quants, get_curated_model_config
         
-        # First, check which backends are available
         backend_availability = {}
         
-        # Check ONNX availability
         try:
             from .shared.onnx_loader import ONNX_AVAILABLE
             backend_availability['onnx'] = ONNX_AVAILABLE
         except ImportError:
             backend_availability['onnx'] = False
             
-        # Check PyTorch availability  
         try:
             from .shared.torch_loader import TORCH_AVAILABLE
             backend_availability['pytorch'] = TORCH_AVAILABLE
         except ImportError:
             backend_availability['pytorch'] = False
             
-        # Check MLX availability
         try:
             from .multimodal_chat.vlm_service import get_vlm_service
             vlm_service = get_vlm_service()
@@ -464,22 +460,19 @@ async def list_vision_models():
         
         models = []
         
-        # Add ONNX models from curated list (only if ONNX backend available and downloaded)
         if backend_availability['onnx']:
             onnx_models = get_available_model_quants()
         else:
-            onnx_models = []  # Skip ONNX models if backend not available
+            onnx_models = []
         
-        # Model name to repo_id mapping for ONNX models
         onnx_model_repo_mapping = {
             "Gemma-3n-E2B-it-ONNX": "onnx-community/gemma-3n-E2B-it-ONNX",
         }
         
         for model_config in onnx_models:
-            if "/" in model_config:  # Model with quantization
+            if "/" in model_config:
                 model_name, quantization = model_config.split("/", 1)
                 
-                # Get the repo_id for this curated model
                 repo_id = onnx_model_repo_mapping.get(model_name)
                 if not repo_id:
                     logger.warning(f"No repo_id mapping found for ONNX model: {model_name}")
@@ -487,10 +480,7 @@ async def list_vision_models():
                 
                 curated_config = get_curated_model_config(model_config)
                 if curated_config:
-                    # Get required files for this quantization
                     required_files = list(curated_config.values())
-                    
-                    # Only include if model is downloaded locally
                     if _is_model_downloaded(repo_id, required_files):
                         display_name = f"{model_name}/{quantization}"
                         backend = "ONNX"
@@ -504,14 +494,9 @@ async def list_vision_models():
                             "quantization": quantization
                         })
         
-        # Add PyTorch/GGUF models from ModelCatalog (only if PyTorch backend available and downloaded)
         if backend_availability['pytorch']:
             for model_id, model_info in ModelCatalog.MODELS.items():
                 if model_info.backend.value == "pytorch":
-                    # The ModelCatalog uses GGUF repos as repo_id for efficiency, but we need to check
-                    # both the original PyTorch repo and GGUF repo for downloads
-                    
-                    # Mapping from GGUF repo (in catalog) to original PyTorch repo
                     gguf_to_original_mapping = {
                         "ggml-org/SmolVLM-256M-Instruct-GGUF": "HuggingFaceTB/SmolVLM-256M-Instruct",
                         "ggml-org/SmolVLM-500M-Instruct-GGUF": "HuggingFaceTB/SmolVLM-500M-Instruct",
@@ -523,7 +508,6 @@ async def list_vision_models():
                     original_repo = gguf_to_original_mapping.get(model_info.repo_id)
                     
                     if model_info.repo_id in ModelCatalog.GGUF_QUANTIZATIONS:
-                        # GGUF quantized model - check GGUF repo
                         if _is_model_downloaded(model_info.repo_id):
                             quantizations = ModelCatalog.get_available_quantizations(model_info.repo_id)
                             for quant in quantizations:
@@ -541,7 +525,6 @@ async def list_vision_models():
                                     "quantization": quant.value.upper()
                                 })
                         
-                        # Also check original PyTorch repo if it exists and is downloaded
                         if original_repo and _is_model_downloaded(original_repo):
                             display_name = f"{model_info.family.title()} {model_info.size.upper()}"
                             if model_info.variant and model_info.variant != "instruct":
@@ -556,7 +539,6 @@ async def list_vision_models():
                                 "quantization": "FP16"
                             })
                     else:
-                        # Regular PyTorch model without GGUF - check the repo_id directly
                         if _is_model_downloaded(model_info.repo_id):
                             display_name = f"{model_info.family.title()} {model_info.size.upper()}"
                             if model_info.variant and model_info.variant != "instruct":
@@ -571,12 +553,10 @@ async def list_vision_models():
                                 "quantization": "FP16"
                             })
         
-        # Add MLX models (only if MLX backend available)
         if backend_availability['mlx']:
             try:
                 from .multimodal_chat.vlm_service import get_vlm_service
                 vlm_service = get_vlm_service()
-                # Get MLX strategy to access supported models
                 mlx_strategy = vlm_service.get_strategy("mlx")
                 if mlx_strategy:
                     supported_models = mlx_strategy.get_supported_models()
@@ -586,7 +566,7 @@ async def list_vision_models():
                             "id": model_info["model_id"],
                             "name": f"MLX {model_info['description']} ({model_info['quantization'].upper()})",
                             "backend": "MLX",
-                            "description": f"Apple Silicon - {model_info['size']} params",
+                            "description": "MLX",
                             "quantization": model_info['quantization'].upper()
                         })
                     

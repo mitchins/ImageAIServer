@@ -179,13 +179,21 @@ class MLXVLMStrategy(BaseVLMStrategy):
                 "performance_tier": 2,
                 "tested": False
             },
-            "smolvlm-256m": {
+            "smolvlm-256m-bf16": {
                 "model_id": "mlx-community/SmolVLM-256M-bf16",
                 "size": "0.256B",
                 "quantization": "bf16", 
                 "description": "Very small VLM, fastest inference",
                 "performance_tier": 1,
                 "tested": False
+            },
+            "smolvlm-256m-4bit": {
+                "model_id": "mlx-community/SmolVLM-256M-Instruct-4bit",
+                "size": "0.256B",
+                "quantization": "4bit", 
+                "description": "Very small VLM, 4-bit quantized",
+                "performance_tier": 1,
+                "tested": True
             }
         }
     

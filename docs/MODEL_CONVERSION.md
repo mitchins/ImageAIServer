@@ -82,7 +82,7 @@ After conversion, upload to your controlled repos:
 
 ```bash
 cd converted_models/sd15-torch-int8
-huggingface-cli upload Mitchins/sd15-torch-int8 . --repo-type model
+huggingface-cli upload imgailab/sd15-torch-int8 . --repo-type model
 ```
 
 ## Model Card Generation
