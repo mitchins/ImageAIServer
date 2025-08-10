@@ -61,6 +61,14 @@ def register_routers():
 
 register_routers()
 
+# Manually register VLM router
+try:
+    from .multimodal_chat.vlm_router import router as vlm_router
+    app.include_router(vlm_router, prefix="/v1/vlm", tags=["vlm"])
+    print("✅ Registered VLM router at /v1/vlm")
+except Exception as e:
+    print(f"❌ Failed to register VLM router: {e}")
+
 # Root redirect to main UI
 @app.get("/", include_in_schema=False)
 async def root():
@@ -179,27 +187,64 @@ async def list_backends():
             gpu_info = {"error": str(e)}
         
         backend_info = {}
-        for backend_type in ["onnx", "pytorch"]:
+        for backend_type in ["onnx", "pytorch", "mlx", "coreml"]:
             if backend_type == "onnx":
                 from .shared.onnx_loader import ONNX_AVAILABLE
                 available = ONNX_AVAILABLE
-            else:  # pytorch
+            elif backend_type == "pytorch":
                 from .shared.torch_loader import TORCH_AVAILABLE
                 available = TORCH_AVAILABLE
+            elif backend_type == "mlx":
+                # Check MLX VLM availability
+                try:
+                    from .multimodal_chat.vlm_service import get_vlm_service
+                    vlm_service = get_vlm_service()
+                    available_vlm_backends = vlm_service.get_available_backends()
+                    available = any(b['name'] == 'mlx' and b['available'] for b in available_vlm_backends)
+                except Exception:
+                    available = False
+            else:  # coreml
+                # Check CoreML availability (Apple Silicon + coremltools)
+                try:
+                    import platform
+                    import coremltools as ct
+                    available = platform.system() == "Darwin"
+                except ImportError:
+                    available = False
             
             backend_info[backend_type] = {
                 "available": available,
-                "initialized": backend_type in [b.value for b in available_backends],
+                "initialized": available if backend_type in ["mlx", "coreml"] else backend_type in [b.value for b in available_backends],
                 "models_count": 0
             }
             
-            if available and backend_type in [b.value for b in available_backends]:
-                # Get model count
-                all_models = manager.list_available_models()
-                from .shared.model_manager import BackendType
-                backend_enum = BackendType(backend_type)
-                if backend_enum in all_models:
-                    backend_info[backend_type]["models_count"] = len(all_models[backend_enum])
+            if available:
+                if backend_type == "mlx":
+                    # Count MLX VLM models
+                    try:
+                        from .multimodal_chat.vlm_service import get_vlm_service
+                        vlm_service = get_vlm_service()
+                        mlx_strategy = vlm_service.get_strategy("mlx")
+                        if mlx_strategy:
+                            supported_models = mlx_strategy.get_supported_models()
+                            backend_info[backend_type]["models_count"] = len(supported_models)
+                    except Exception:
+                        pass
+                elif backend_type == "coreml":
+                    # Count CoreML models (currently just diffusion models)
+                    # TODO: Could expand to count actual .mlmodel files if needed
+                    try:
+                        # For now, assume CoreML diffusion is available if CoreML is available
+                        backend_info[backend_type]["models_count"] = 1  # SD1.5 CoreML
+                    except Exception:
+                        pass
+                elif backend_type in [b.value for b in available_backends]:
+                    # Get model count for ONNX/PyTorch
+                    all_models = manager.list_available_models()
+                    from .shared.model_manager import BackendType
+                    backend_enum = BackendType(backend_type)
+                    if backend_enum in all_models:
+                        backend_info[backend_type]["models_count"] = len(all_models[backend_enum])
         
         return {
             "backends": backend_info,
@@ -211,7 +256,9 @@ async def list_backends():
         return {
             "backends": {
                 "onnx": {"available": False, "initialized": False, "models_count": 0},
-                "pytorch": {"available": False, "initialized": False, "models_count": 0}
+                "pytorch": {"available": False, "initialized": False, "models_count": 0},
+                "mlx": {"available": False, "initialized": False, "models_count": 0},
+                "coreml": {"available": False, "initialized": False, "models_count": 0}
             },
             "gpu": {"error": "Could not determine GPU status"},
             "default_selection": "auto",
@@ -384,15 +431,44 @@ async def health_check():
 
 @app.get("/v1/vision-models", tags=["system"])
 async def list_vision_models():
-    """List only locally available vision-capable models (ONNX and PyTorch/GGUF)."""
+    """List only locally available vision-capable models with available backends."""
     try:
         from .shared.model_identifier import ModelCatalog
         from .shared.model_types import get_available_model_quants, get_curated_model_config
         
+        # First, check which backends are available
+        backend_availability = {}
+        
+        # Check ONNX availability
+        try:
+            from .shared.onnx_loader import ONNX_AVAILABLE
+            backend_availability['onnx'] = ONNX_AVAILABLE
+        except ImportError:
+            backend_availability['onnx'] = False
+            
+        # Check PyTorch availability  
+        try:
+            from .shared.torch_loader import TORCH_AVAILABLE
+            backend_availability['pytorch'] = TORCH_AVAILABLE
+        except ImportError:
+            backend_availability['pytorch'] = False
+            
+        # Check MLX availability
+        try:
+            from .multimodal_chat.vlm_service import get_vlm_service
+            vlm_service = get_vlm_service()
+            available_vlm_backends = vlm_service.get_available_backends()
+            backend_availability['mlx'] = any(b['name'] == 'mlx' and b['available'] for b in available_vlm_backends)
+        except Exception:
+            backend_availability['mlx'] = False
+        
         models = []
         
-        # Add ONNX models from curated list (only if downloaded)
-        onnx_models = get_available_model_quants()
+        # Add ONNX models from curated list (only if ONNX backend available and downloaded)
+        if backend_availability['onnx']:
+            onnx_models = get_available_model_quants()
+        else:
+            onnx_models = []  # Skip ONNX models if backend not available
         
         # Model name to repo_id mapping for ONNX models
         onnx_model_repo_mapping = {
@@ -428,71 +504,96 @@ async def list_vision_models():
                             "quantization": quantization
                         })
         
-        # Add PyTorch/GGUF models from ModelCatalog (only if downloaded)
-        for model_id, model_info in ModelCatalog.MODELS.items():
-            if model_info.backend.value == "pytorch":
-                # The ModelCatalog uses GGUF repos as repo_id for efficiency, but we need to check
-                # both the original PyTorch repo and GGUF repo for downloads
-                
-                # Mapping from GGUF repo (in catalog) to original PyTorch repo
-                gguf_to_original_mapping = {
-                    "ggml-org/SmolVLM-256M-Instruct-GGUF": "HuggingFaceTB/SmolVLM-256M-Instruct",
-                    "ggml-org/SmolVLM-500M-Instruct-GGUF": "HuggingFaceTB/SmolVLM-500M-Instruct",
-                    "bartowski/ibm-granite_granite-vision-3.2-2b-GGUF": "ibm-granite/granite-vision-3.2-2b",
-                    "bartowski/mistral-community_pixtral-12b-GGUF": "mistralai/pixtral-12b",
-                    "bartowski/google_gemma-3-27b-it-GGUF": "google/gemma-3-27b-it",
-                }
-                
-                original_repo = gguf_to_original_mapping.get(model_info.repo_id)
-                
-                if model_info.repo_id in ModelCatalog.GGUF_QUANTIZATIONS:
-                    # GGUF quantized model - check GGUF repo
-                    if _is_model_downloaded(model_info.repo_id):
-                        quantizations = ModelCatalog.get_available_quantizations(model_info.repo_id)
-                        for quant in quantizations:
+        # Add PyTorch/GGUF models from ModelCatalog (only if PyTorch backend available and downloaded)
+        if backend_availability['pytorch']:
+            for model_id, model_info in ModelCatalog.MODELS.items():
+                if model_info.backend.value == "pytorch":
+                    # The ModelCatalog uses GGUF repos as repo_id for efficiency, but we need to check
+                    # both the original PyTorch repo and GGUF repo for downloads
+                    
+                    # Mapping from GGUF repo (in catalog) to original PyTorch repo
+                    gguf_to_original_mapping = {
+                        "ggml-org/SmolVLM-256M-Instruct-GGUF": "HuggingFaceTB/SmolVLM-256M-Instruct",
+                        "ggml-org/SmolVLM-500M-Instruct-GGUF": "HuggingFaceTB/SmolVLM-500M-Instruct",
+                        "bartowski/ibm-granite_granite-vision-3.2-2b-GGUF": "ibm-granite/granite-vision-3.2-2b",
+                        "bartowski/mistral-community_pixtral-12b-GGUF": "mistralai/pixtral-12b",
+                        "bartowski/google_gemma-3-27b-it-GGUF": "google/gemma-3-27b-it",
+                    }
+                    
+                    original_repo = gguf_to_original_mapping.get(model_info.repo_id)
+                    
+                    if model_info.repo_id in ModelCatalog.GGUF_QUANTIZATIONS:
+                        # GGUF quantized model - check GGUF repo
+                        if _is_model_downloaded(model_info.repo_id):
+                            quantizations = ModelCatalog.get_available_quantizations(model_info.repo_id)
+                            for quant in quantizations:
+                                display_name = f"{model_info.family.title()} {model_info.size.upper()}"
+                                if model_info.variant and model_info.variant != "instruct":
+                                    display_name += f" {model_info.variant.title()}"
+                                
+                                description = "GGUF"
+                                
+                                models.append({
+                                    "id": f"{model_id}:{quant.value}",
+                                    "name": f"{display_name} ({quant.value.upper()})",
+                                    "backend": "PyTorch/GGUF",
+                                    "description": description,
+                                    "quantization": quant.value.upper()
+                                })
+                        
+                        # Also check original PyTorch repo if it exists and is downloaded
+                        if original_repo and _is_model_downloaded(original_repo):
                             display_name = f"{model_info.family.title()} {model_info.size.upper()}"
                             if model_info.variant and model_info.variant != "instruct":
                                 display_name += f" {model_info.variant.title()}"
                             
-                            description = "GGUF"
-                            
+                            description = "PyTorch"
                             models.append({
-                                "id": f"{model_id}:{quant.value}",
-                                "name": f"{display_name} ({quant.value.upper()})",
-                                "backend": "PyTorch/GGUF",
+                                "id": f"{model_id}:original",
+                                "name": f"{display_name} (Original)",
+                                "backend": "PyTorch",
                                 "description": description,
-                                "quantization": quant.value.upper()
+                                "quantization": "FP16"
                             })
+                    else:
+                        # Regular PyTorch model without GGUF - check the repo_id directly
+                        if _is_model_downloaded(model_info.repo_id):
+                            display_name = f"{model_info.family.title()} {model_info.size.upper()}"
+                            if model_info.variant and model_info.variant != "instruct":
+                                display_name += f" {model_info.variant.title()}"
+                            
+                            description = "PyTorch"
+                            models.append({
+                                "id": model_id,
+                                "name": display_name,
+                                "backend": "PyTorch",
+                                "description": description,
+                                "quantization": "FP16"
+                            })
+        
+        # Add MLX models (only if MLX backend available)
+        if backend_availability['mlx']:
+            try:
+                from .multimodal_chat.vlm_service import get_vlm_service
+                vlm_service = get_vlm_service()
+                # Get MLX strategy to access supported models
+                mlx_strategy = vlm_service.get_strategy("mlx")
+                if mlx_strategy:
+                    supported_models = mlx_strategy.get_supported_models()
                     
-                    # Also check original PyTorch repo if it exists and is downloaded
-                    if original_repo and _is_model_downloaded(original_repo):
-                        display_name = f"{model_info.family.title()} {model_info.size.upper()}"
-                        if model_info.variant and model_info.variant != "instruct":
-                            display_name += f" {model_info.variant.title()}"
-                        
-                        description = "PyTorch"
+                    for model_key, model_info in supported_models.items():
                         models.append({
-                            "id": f"{model_id}:original",
-                            "name": f"{display_name} (Original)",
-                            "backend": "PyTorch",
-                            "description": description,
-                            "quantization": "FP16"
+                            "id": model_info["model_id"],
+                            "name": f"MLX {model_info['description']} ({model_info['quantization'].upper()})",
+                            "backend": "MLX",
+                            "description": f"Apple Silicon - {model_info['size']} params",
+                            "quantization": model_info['quantization'].upper()
                         })
-                else:
-                    # Regular PyTorch model without GGUF - check the repo_id directly
-                    if _is_model_downloaded(model_info.repo_id):
-                        display_name = f"{model_info.family.title()} {model_info.size.upper()}"
-                        if model_info.variant and model_info.variant != "instruct":
-                            display_name += f" {model_info.variant.title()}"
-                        
-                        description = "PyTorch"
-                        models.append({
-                            "id": model_id,
-                            "name": display_name,
-                            "backend": "PyTorch",
-                            "description": description,
-                            "quantization": "FP16"
-                        })
+                    
+                    logger.info(f"Added {len(supported_models)} MLX VLM models")
+                
+            except Exception as e:
+                logger.warning(f"Failed to add MLX models to vision-models list: {e}")
         
         return {
             "object": "list",

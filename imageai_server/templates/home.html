@@ -21,8 +21,25 @@
                     <span class="material-symbols-rounded" style="color: #28a745; vertical-align: middle;">check_circle</span> 
                     <strong>Server Status:</strong> Running and healthy
                 </p>
-                <div style="margin-top: 0.5rem; font-size: 0.9rem;">
-                    <span id="backend-status">Loading backend status...</span>
+                <div style="margin-top: 1rem;">
+                    <div id="backend-status-loading" style="font-size: 0.9rem;">Loading backend status...</div>
+                    <div id="backend-status-table" style="display: none;">
+                        <table class="striped responsive-table" style="margin-top: 0.5rem; font-size: 0.9rem;">
+                            <thead>
+                                <tr>
+                                    <th>Backend</th>
+                                    <th>Status</th>
+                                    <th>Models</th>
+                                    <th>Description</th>
+                                </tr>
+                            </thead>
+                            <tbody id="backend-table-body">
+                            </tbody>
+                        </table>
+                        <div style="margin-top: 1rem; font-size: 0.9rem;">
+                            <strong>System:</strong> <span id="system-status"></span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -103,10 +120,54 @@ Promise.all([
     fetch('/v1/backends').then(r => r.json()),
     fetch('/v1/system/status').then(r => r.json()).catch(() => null)
 ]).then(([backendsData, systemData]) => {
-    const onnxStatus = backendsData.backends.onnx.available ? '<span class="material-symbols-rounded" style="color: #28a745; vertical-align: middle;">check_circle</span> ONNX' : '<span class="material-symbols-rounded" style="color: #dc3545; vertical-align: middle;">cancel</span> ONNX';
-    const pytorchStatus = backendsData.backends.pytorch.available ? '<span class="material-symbols-rounded" style="color: #28a745; vertical-align: middle;">check_circle</span> PyTorch' : '<span class="material-symbols-rounded" style="color: #dc3545; vertical-align: middle;">cancel</span> PyTorch';
-    const onnxCount = backendsData.backends.onnx.models_count || 0;
-    const pytorchCount = backendsData.backends.pytorch.models_count || 0;
+    // Helper function to get status badge
+    function getStatusBadge(available, initialized) {
+        if (available && initialized) {
+            return '<span style="background: #4caf50; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: 500;">OK</span>';
+        } else if (available && !initialized) {
+            return '<span style="background: #ff9800; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: 500;">Issue</span>';
+        } else {
+            return '<span style="background: #9e9e9e; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: 500;">Unavailable</span>';
+        }
+    }
+    
+    // Build table rows for backends
+    const backends = [
+        {
+            name: 'ONNX',
+            data: backendsData.backends.onnx,
+            description: 'Fast inference'
+        },
+        {
+            name: 'PyTorch', 
+            data: backendsData.backends.pytorch,
+            description: 'General purpose'
+        },
+        {
+            name: 'MLX',
+            data: backendsData.backends.mlx || {available: false, initialized: false, models_count: 0},
+            description: 'Vision chat'
+        },
+        {
+            name: 'CoreML',
+            data: backendsData.backends.coreml || {available: false, initialized: false, models_count: 0},
+            description: 'Apple native'
+        }
+    ];
+    
+    const tableBody = document.getElementById('backend-table-body');
+    tableBody.innerHTML = '';
+    
+    backends.forEach(backend => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td><strong>${backend.name}</strong></td>
+            <td>${getStatusBadge(backend.data.available, backend.data.initialized)}</td>
+            <td>${backend.data.models_count || 0}</td>
+            <td style="color: #666;">${backend.description}</td>
+        `;
+        tableBody.appendChild(row);
+    });
     
     // Build GPU status
     let gpuStatus = '';
@@ -133,19 +194,25 @@ Promise.all([
         }
     }
     
+    // GPU status removed - now part of backend descriptions
+    
     // Build system status
     let systemInfo = '';
     if (systemData) {
         const uptime = systemData.uptime_hours ? `${systemData.uptime_hours.toFixed(1)}h` : 'Unknown';
         const memory = systemData.memory_usage_mb ? `${systemData.memory_usage_mb.toFixed(0)} MB` : 'Unknown';
-        systemInfo = `<br><strong>System:</strong> Uptime: ${uptime}, Memory: ${memory}`;
+        systemInfo = `Uptime: ${uptime}, Memory: ${memory}`;
+    } else {
+        systemInfo = 'Status unavailable';
     }
+    document.getElementById('system-status').innerHTML = systemInfo;
     
-    document.getElementById('backend-status').innerHTML = 
-        `<strong>Backends:</strong> ${onnxStatus} (${onnxCount} models), ${pytorchStatus} (${pytorchCount} models)<br>` +
-        `<strong>Acceleration:</strong> ${gpuStatus}${systemInfo}`;
+    // Show table, hide loading
+    document.getElementById('backend-status-loading').style.display = 'none';
+    document.getElementById('backend-status-table').style.display = 'block';
+    
 }).catch(() => {
-    document.getElementById('backend-status').innerHTML = 
-        '<strong>Backends:</strong> Status unavailable';
+    document.getElementById('backend-status-loading').innerHTML = 
+        '<strong>Status:</strong> <span style="color: #dc3545;">Error loading backend status</span>';
 });
 {% endblock %}

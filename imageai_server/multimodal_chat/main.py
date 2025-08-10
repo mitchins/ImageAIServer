@@ -71,6 +71,8 @@ model_manager = get_model_manager()
 
 import logging
 
+logger = logging.getLogger(__name__)
+
 # Removed old model loading functions - now using ONNXModelLoader
 
 app = FastAPI()
@@ -199,8 +201,56 @@ async def get_inference_engine(model_name: str):
 
 # Generate text using inference engine
 async def generate_text(text: str, model_name: str, max_tokens: int = 100, images: List[str] | None = None, audio: List[str] | None = None) -> str:
-    """Generate text using the model manager."""
-    # Use the model manager directly for generation - let it choose the appropriate backend
+    """Generate text using the model manager, with MLX VLM priority for compatible models."""
+    
+    # Try MLX VLM first for MLX-compatible models (Apple Silicon + has images)
+    if images and _is_mlx_model(model_name):
+        try:
+            from .vlm_service import get_vlm_service
+            vlm_service = get_vlm_service()
+            
+            # Check if MLX backend is available
+            available_backends = vlm_service.get_available_backends()
+            if any(b['name'] == 'mlx' and b['available'] for b in available_backends):
+                logger.info(f"Using MLX VLM for model: {model_name}")
+                
+                # Load MLX model if not already loaded
+                current_model = vlm_service.get_loaded_model_info()
+                if not current_model or current_model['model_name'] != model_name:
+                    success = await vlm_service.load_model(model_name, backend="mlx")
+                    if not success:
+                        logger.warning(f"Failed to load MLX model {model_name}, falling back to legacy backends")
+                        raise Exception("MLX model loading failed")
+                
+                # Convert base64 images to PIL Images
+                pil_images = []
+                for img_base64 in images:
+                    try:
+                        import io
+                        image_data = base64.b64decode(img_base64)
+                        pil_image = Image.open(io.BytesIO(image_data)).convert('RGB')
+                        pil_images.append(pil_image)
+                    except Exception as e:
+                        logger.error(f"Failed to decode image: {e}")
+                        continue
+                
+                if pil_images:
+                    # Use first image for now (could be enhanced for multi-image support)
+                    response = await vlm_service.generate_response(
+                        image=pil_images[0],
+                        prompt=text,
+                        max_tokens=max_tokens,
+                        temperature=0.0
+                    )
+                    return response.text
+                else:
+                    logger.warning("No valid images found, falling back to legacy backends")
+                    
+        except Exception as e:
+            logger.warning(f"MLX VLM generation failed for {model_name}: {e}")
+            # Fall through to legacy backends
+    
+    # Fall back to existing model manager for ONNX/PyTorch models
     return model_manager.generate_text(
         model_name=model_name,
         text=text,
@@ -209,6 +259,23 @@ async def generate_text(text: str, model_name: str, max_tokens: int = 100, image
         audio=audio,
         backend=None  # Let model manager choose appropriate backend
     )
+
+
+def _is_mlx_model(model_name: str) -> bool:
+    """Check if a model is MLX-compatible."""
+    if not model_name:
+        return False
+    
+    # Check for MLX model patterns
+    mlx_patterns = [
+        "mlx",
+        "lmstudio-community",
+        "gemma-3n",
+        "gemma3n"
+    ]
+    
+    model_lower = model_name.lower()
+    return any(pattern in model_lower for pattern in mlx_patterns)
 
 
 # Legacy functions for backward compatibility with old tests
