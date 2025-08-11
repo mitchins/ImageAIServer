@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}ImageAI Server{% endblock %}</title>
+    <link rel="icon" href="/static/icon.png" type="image/png">
+    
+    <!-- Materialize CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+    <!-- Material Icons -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200">
+    <!-- Custom styles -->
+    <link rel="stylesheet" href="/static/manage/styles.css">
+    
+    
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="purple darken-1" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;">
+        <div class="nav-wrapper">
+            <a href="/ui/" class="brand-logo left" style="padding-left: 20px;">
+                <img src="/static/icon.png" alt="ImageAI" style="height: 40px; vertical-align: middle; margin-right: 10px;"> 
+                ImageAIServer
+            </a>
+            <div class="hide-on-large-only">
+                <a href="#" data-target="mobile-nav" class="sidenav-trigger right"><span class="material-symbols-rounded">menu</span></a>
+            </div>
+            <ul class="right hide-on-med-and-down">
+                <li{% if current_page == 'home' %} class="active"{% endif %}>
+                    <a href="/ui/" title="Home">
+                        <span class="material-symbols-rounded left">home</span>Home
+                    </a>
+                </li>
+                <li{% if current_page == 'models' %} class="active"{% endif %}>
+                    <a href="/ui/models" title="Models">
+                        <span class="material-symbols-rounded left">settings</span>Models
+                    </a>
+                </li>
+                <li{% if current_page == 'vision-chat' %} class="active"{% endif %}>
+                    <a href="/ui/vision-chat" title="Chat">
+                        <span class="material-symbols-rounded left">mms</span>Chat
+                    </a>
+                </li>
+                <li{% if current_page == 'compare-faces' %} class="active"{% endif %}>
+                    <a href="/ui/compare-faces" title="Faces">
+                        <span class="material-symbols-rounded left">face</span>Faces
+                    </a>
+                </li>
+                <li{% if current_page == 'generate' %} class="active"{% endif %}>
+                    <a href="/ui/generate" title="Generate">
+                        <span class="material-symbols-rounded left">palette</span>Generate
+                    </a>
+                </li>
+                <li{% if current_page == 'docs' %} class="active"{% endif %}>
+                    <a href="/ui/docs" title="API Documentation">
+                        <span class="material-symbols-rounded left">book</span>Docs
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <ul class="sidenav" id="mobile-nav">
+        <li><a href="/ui/">
+            <span class="material-symbols-rounded left">home</span>Home
+        </a></li>
+        <li><a href="/ui/models">
+            <span class="material-symbols-rounded left">settings</span>Models
+        </a></li>
+        <li><a href="/ui/vision-chat">
+            <span class="material-symbols-rounded left">mms</span>Chat
+        </a></li>
+        <li><a href="/ui/compare-faces">
+            <span class="material-symbols-rounded left">face</span>Faces
+        </a></li>
+        <li><a href="/ui/generate">
+            <span class="material-symbols-rounded left">palette</span>Generate
+        </a></li>
+        <li><a href="/ui/docs">
+            <span class="material-symbols-rounded left">book</span>Docs
+        </a></li>
+    </ul>
+
+    <!-- Main Content -->
+    {% block content %}{% endblock %}
+
+    <!-- Materialize JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+    <script>
+        // Initialize Materialize components
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize sidenav
+            const sidenavElems = document.querySelectorAll('.sidenav');
+            M.Sidenav.init(sidenavElems, {edge: 'right'});
+            
+            // Initialize other components as needed
+            {% block js_init %}{% endblock %}
+        });
+    </script>
+    
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -31,11 +31,20 @@ except ImportError as e:
     PyTorchModelLoader = None
     PyTorchInferenceEngine = None
 
+try:
+    from ..multimodal_chat.vlm_service import get_vlm_service
+    MLX_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"MLX VLM backend unavailable: {e}")
+    MLX_AVAILABLE = False
+    get_vlm_service = None
+
 
 class BackendType(str, Enum):
     """Available backend types."""
     ONNX = "onnx"
     PYTORCH = "pytorch"
+    MLX = "mlx"  # Apple Silicon MLX backend
     AUTO = "auto"  # Automatically select best backend
 
 
@@ -74,6 +83,27 @@ class ModelManager:
                     logger.info("PyTorch backend initialized")
             except Exception as e:
                 logger.warning(f"Failed to initialize PyTorch backend: {e}")
+        
+        # Initialize MLX VLM backend (Apple Silicon only)
+        if get_vlm_service and MLX_AVAILABLE:
+            try:
+                vlm_service = get_vlm_service()
+                available_backends = vlm_service.get_available_backends()
+                if any(b['name'] == 'mlx' and b['available'] for b in available_backends):
+                    # Create a simple adapter to match the ModelBackend interface
+                    class MLXVLMAdapter:
+                        def is_available(self): return True
+                        def get_config(self): return {}
+                    
+                    class MLXVLMLoader:
+                        def __init__(self, vlm_service):
+                            self.vlm_service = vlm_service
+                    
+                    self.backends[BackendType.MLX] = MLXVLMAdapter()
+                    self.loaders[BackendType.MLX] = MLXVLMLoader(vlm_service)
+                    logger.info("MLX VLM backend initialized")
+            except Exception as e:
+                logger.warning(f"Failed to initialize MLX VLM backend: {e}")
     
     def get_available_backends(self) -> List[BackendType]:
         """Get list of available backends."""

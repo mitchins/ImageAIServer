@@ -2,8 +2,8 @@ PRESETS = {
     "photo": {
         "detector_repo": "deepghs/real_face_detection",
         "detector_file": "face_detect_v1.4_s/model.onnx",
-        "embedder_repo": "openailab/onnx-arcface-resnet100-ms1m",
-        "embedder_file": "model.onnx",
+        "embedder_repo": "garavv/arcface-onnx",
+        "embedder_file": "arc.onnx",
         "threshold": 0.446,
     },
     "anime": {

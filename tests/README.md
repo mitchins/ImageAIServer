@@ -45,6 +45,23 @@ pytest tests/integration/test_smolvlm_int8.py -v
 
 # Skip slow tests (model downloads)
 pytest tests/integration/ -v -m "not slow"
+
+# Run face detection pipeline tests specifically
+python tests/test_face_pipeline.py --verbose
+```
+
+### Face Detection Pipeline Tests
+Comprehensive tests for face detection across different face types:
+
+```bash
+# Run all face detection tests (unit + integration)
+python tests/test_face_pipeline.py
+
+# Run only unit tests (ONNX model tests)
+python tests/test_face_pipeline.py --unit-only
+
+# Run only integration tests (full pipeline with real images)
+python tests/test_face_pipeline.py --integration-only --verbose
 ```
 
 ## Test Categories
@@ -59,6 +76,21 @@ pytest tests/integration/ -v -m "not slow"
   - Configuration handling
   - Model selection strategy
   - API compatibility
+  - **Face detection ONNX models** (`test_face_onnx_models.py`)
+    - Image preprocessing functions
+    - CLIP embedding generation
+    - Model loader functionality
+    - Error handling
+  - **Unified model registry** (`test_unified_model_registry.py`)
+    - Model discovery across servers
+    - Quantization handling and filtering
+    - Download status management
+    - File association logic
+  - **Diffusion model registry** (`test_diffusion_model_registry.py`)
+    - Working set validation
+    - Optimal configuration suggestion
+    - Component specification handling
+    - Backend and quantization compatibility
 
 ### Integration Tests (`tests/integration/`)
 - **Purpose**: Test actual model inference end-to-end
@@ -73,6 +105,11 @@ pytest tests/integration/ -v -m "not slow"
   - Vision + text generation
   - Memory efficiency validation
   - Inference speed benchmarks
+  - **Face detection pipeline** (`test_face_detection_pipeline.py`)
+    - Real photo face detection and comparison
+    - Anime face detection and comparison
+    - Cross-type embedding consistency
+    - Model loading and caching
 
 ## Writing New Tests
 

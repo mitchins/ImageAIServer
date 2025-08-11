@@ -39,6 +39,10 @@ dependencies = [
     "opencv-python>=4.5.0",
     "sentencepiece>=0.1.99",
     "optimum>=1.12.0",
+    "jinja2>=3.1.2",
+    "dghs-imgutils>=0.18.0",
+    "psutil>=5.8.0",
+    "pyyaml>=6.0.0",
 ]
 
 [project.optional-dependencies]
@@ -51,6 +55,20 @@ dev = [
     "flake8>=6.0.0",
     "mypy>=1.0.0",
 ]
+torch = [
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "diffusers>=0.17.1",
+    "transformers>=4.35.0",
+    "accelerate>=0.24.0",
+    "sentencepiece>=0.1.99",
+    "protobuf>=3.20.0",
+    "safetensors>=0.3.1",
+]
+torch-macos = [
+    "imageaiserver[torch]",
+    "scipy>=1.10.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/mitchins/ImageAIServer"
@@ -60,12 +78,13 @@ Issues = "https://github.com/mitchins/ImageAIServer/issues"
 
 [project.scripts]
 imageaiserver = "imageai_server.__main__:main"
+imageai-generate = "imageai_server.utils.generate_image:main"
 
 [tool.setuptools]
-packages = ["imageai_server", "imageai_server.shared", "imageai_server.multimodal_chat", "imageai_server.face_api", "imageai_server.manage_api", "imageai_server.face_server", "imageai_server.chat_server"]
+packages = ["imageai_server", "imageai_server.shared", "imageai_server.multimodal_chat", "imageai_server.face_api", "imageai_server.manage_api", "imageai_server.face_server", "imageai_server.chat_server", "imageai_server.utils"]
 
 [tool.setuptools.package-data]
-"*" = ["*.html", "*.js", "*.css"]
+"*" = ["*.html", "*.js", "*.css", "*.yaml", "*.yml"]
 
 [tool.black]
 line-length = 88

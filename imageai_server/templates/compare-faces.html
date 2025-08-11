@@ -1,0 +1,477 @@
+{% extends "base.html" %}
+
+{% block title %}Compare Faces - ImageAI Server{% endblock %}
+
+{% block head %}
+<style>
+    .upload-zone {
+        border: 3px dashed #e9ecef;
+        border-radius: 12px;
+        padding: 3rem;
+        text-align: center;
+        margin-bottom: 2rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        position: relative;
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+        border-color: #4facfe;
+        background: rgba(79, 172, 254, 0.05);
+    }
+    .upload-zone.has-image {
+        border-color: #28a745;
+        background: rgba(40, 167, 69, 0.05);
+    }
+    .upload-zone img {
+        max-width: 100%;
+        max-height: 200px;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+    .upload-text {
+        color: #6c757d;
+        font-size: 1.1rem;
+        margin-bottom: 0.5rem;
+    }
+    .upload-hint {
+        color: #adb5bd;
+        font-size: 0.9rem;
+    }
+    
+    .face-comparison {
+        display: flex;
+        justify-content: center;
+        gap: 2rem;
+        margin-bottom: 2rem;
+        flex-wrap: wrap;
+    }
+    
+    .face-upload-container {
+        flex: 0 1 300px;
+        max-width: 400px;
+    }
+    
+    .result-container {
+        margin-top: 2rem;
+        padding: 1.5rem;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    .confidence-high { color: #28a745; }
+    .confidence-medium { color: #ffc107; }
+    .confidence-low { color: #dc3545; }
+    
+    /* Segment Control Styles */
+    .face-type-segments {
+        display: inline-flex;
+        border: 2px solid #667eea;
+        border-radius: 25px;
+        overflow: hidden;
+        background: white;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    
+    .face-type-segments input[type="radio"] {
+        display: none;
+    }
+    
+    .segment-btn {
+        padding: 0.75rem 1.5rem;
+        background: white;
+        color: #667eea;
+        border: none;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-weight: 500;
+        border-right: 1px solid #e0e0e0;
+        margin: 0;
+        min-width: 120px;
+        justify-content: center;
+    }
+    
+    .segment-btn:last-child {
+        border-right: none;
+    }
+    
+    .segment-btn:hover {
+        background: rgba(102, 126, 234, 0.1);
+    }
+    
+    .face-type-segments input[type="radio"]:checked + .segment-btn {
+        background: #667eea;
+        color: white;
+    }
+    
+    .segment-btn .material-symbols-rounded {
+        font-size: 1.2rem;
+    }
+    
+    @media (max-width: 768px) {
+        .face-comparison { 
+            flex-direction: column;
+            align-items: center;
+        }
+        .face-upload-container {
+            width: 100%;
+            max-width: 300px;
+        }
+        
+        .face-type-segments {
+            flex-direction: column;
+            border-radius: 15px;
+        }
+        
+        .segment-btn {
+            border-right: none;
+            border-bottom: 1px solid #e0e0e0;
+            min-width: auto;
+            width: 200px;
+        }
+        
+        .segment-btn:last-child {
+            border-bottom: none;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <!-- Header -->
+    <div class="row">
+        <div class="col s12">
+            <div class="card-panel center-align" style="margin-top: 2rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <h3 style="margin-bottom: 0.5rem;">
+                    <span class="material-symbols-rounded" style="font-size: 2.5rem; vertical-align: middle; margin-right: 0.5rem;">face</span>
+                    Compare Faces
+                </h3>
+                <p style="opacity: 0.9; margin: 0;">Upload two face images to compare their similarity</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Face Comparison Interface -->
+    <div class="row">
+        <div class="col s12">
+            <div class="card">
+                <div class="card-content">
+                    <!-- Face Type Selection -->
+                    <div class="row">
+                        <div class="col s12">
+                            <div class="center-align" style="margin-bottom: 2rem;">
+                                <h6 style="margin-bottom: 1rem; color: #666;">Face Detection Type</h6>
+                                <div class="face-type-segments">
+                                    <input type="radio" id="face-type-photo" name="face-type" value="photo" checked>
+                                    <label for="face-type-photo" class="segment-btn">
+                                        <span class="material-symbols-rounded">photo_camera</span>
+                                        Real Photos
+                                    </label>
+                                    
+                                    <input type="radio" id="face-type-anime" name="face-type" value="anime">
+                                    <label for="face-type-anime" class="segment-btn">
+                                        <span class="material-symbols-rounded">animation</span>
+                                        Anime/Manga
+                                    </label>
+                                    
+                                    <input type="radio" id="face-type-cg" name="face-type" value="cg">
+                                    <label for="face-type-cg" class="segment-btn">
+                                        <span class="material-symbols-rounded">brush</span>
+                                        CG/Digital Art
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="face-comparison">
+                        <div class="face-upload-container">
+                            <div class="upload-zone" id="face-upload-a">
+                                <span class="material-symbols-rounded" style="font-size: 3rem; color: #6c757d; margin-bottom: 1rem;">person</span>
+                                <div class="upload-text">Drop Face A here</div>
+                                <div class="upload-hint">First face to compare</div>
+                                <input type="file" id="face-file-a" accept="image/*" style="display: none;">
+                            </div>
+                        </div>
+                        <div class="face-upload-container">
+                            <div class="upload-zone" id="face-upload-b">
+                                <span class="material-symbols-rounded" style="font-size: 3rem; color: #6c757d; margin-bottom: 1rem;">person</span>
+                                <div class="upload-text">Drop Face B here</div>
+                                <div class="upload-hint">Second face to compare</div>
+                                <input type="file" id="face-file-b" accept="image/*" style="display: none;">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="center-align">
+                        <button id="face-submit" class="btn-large waves-effect waves-light" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin-right: 1rem;" onclick="submitFaceComparison()">
+                            <span id="face-spinner" class="preloader-wrapper active" style="display: none; width: 20px; height: 20px; margin-right: 0.5rem;">
+                                <div class="spinner-layer spinner-white-only">
+                                    <div class="circle-clipper left">
+                                        <div class="circle"></div>
+                                    </div>
+                                    <div class="gap-patch">
+                                        <div class="circle"></div>
+                                    </div>
+                                    <div class="circle-clipper right">
+                                        <div class="circle"></div>
+                                    </div>
+                                </div>
+                            </span>
+                            <span class="material-symbols-rounded left">compare</span>
+                            Compare Faces
+                        </button>
+                        
+                        <button class="btn-large red waves-effect waves-light" onclick="clearFaceImages()">
+                            <span class="material-symbols-rounded left">clear</span>
+                            Clear
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Results -->
+    <div id="face-result" style="display: none;">
+        <div class="row">
+            <div class="col s12">
+                <div class="card">
+                    <div class="card-content">
+                        <span class="card-title">
+                            <span class="material-symbols-rounded left">analytics</span>
+                            Comparison Results
+                        </span>
+                        <div id="face-result-content"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Error Display -->
+    <div id="error-container" class="card red lighten-5" style="display: none;">
+        <div class="card-content">
+            <span class="card-title red-text">
+                <span class="material-symbols-rounded left">error</span>
+                Error
+            </span>
+            <pre id="error-message" class="red-text text-darken-2"></pre>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+    let faceImageA = null;
+    let faceImageB = null;
+    
+    // Face comparison functionality
+    async function submitFaceComparison() {
+        if (!faceImageA || !faceImageB) {
+            M.toast({html: 'Please upload both face images.', classes: 'red'});
+            return;
+        }
+        
+        const submitBtn = document.getElementById('face-submit');
+        const spinner = document.getElementById('face-spinner');
+        const resultDiv = document.getElementById('face-result');
+        const errorContainer = document.getElementById('error-container');
+        
+        // Get selected face type
+        const faceType = document.querySelector('input[name="face-type"]:checked').value;
+        
+        submitBtn.disabled = true;
+        spinner.style.display = 'inline-block';
+        errorContainer.style.display = 'none';
+        
+        try {
+            const formData = new FormData();
+            formData.append('image_a', faceImageA);
+            formData.append('image_b', faceImageB);
+            formData.append('face_type', faceType);
+            
+            const response = await fetch('/api/face/compare', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || `HTTP ${response.status}`);
+            }
+            
+            const data = await response.json();
+            showFaceResult(data);
+            M.toast({html: 'Face comparison completed!', classes: 'green'});
+            
+        } catch (error) {
+            console.error('Face comparison error:', error);
+            showError(error.message);
+            M.toast({html: `Error: ${error.message}`, classes: 'red'});
+        } finally {
+            submitBtn.disabled = false;
+            spinner.style.display = 'none';
+        }
+    }
+    
+    function showFaceResult(data) {
+        const resultDiv = document.getElementById('face-result');
+        const resultContent = document.getElementById('face-result-content');
+        
+        let confidenceClass = 'confidence-low';
+        let confidenceText = 'Low';
+        let matchText = 'Different people';
+        
+        if (data.confidence > 0.8) {
+            confidenceClass = 'confidence-high';
+            confidenceText = 'High';
+            matchText = 'Same person';
+        } else if (data.confidence > 0.5) {
+            confidenceClass = 'confidence-medium';
+            confidenceText = 'Medium';
+            matchText = 'Possibly same person';
+        }
+        
+        resultContent.innerHTML = `
+            <div class="row">
+                <div class="col s12 m6">
+                    <h5>Match Result</h5>
+                    <p><strong>Similarity:</strong> <span class="${confidenceClass}">${(data.confidence * 100).toFixed(1)}%</span></p>
+                    <p><strong>Confidence:</strong> <span class="${confidenceClass}">${confidenceText}</span></p>
+                    <p><strong>Assessment:</strong> ${matchText}</p>
+                </div>
+                <div class="col s12 m6">
+                    <h5>Technical Details</h5>
+                    <p><strong>Algorithm:</strong> ${data.model || 'Face Recognition'}</p>
+                    <p><strong>Processing Time:</strong> ${data.processing_time_ms || 'N/A'}ms</p>
+                    <p><strong>Threshold:</strong> 0.5 (50%)</p>
+                </div>
+            </div>
+        `;
+        
+        resultDiv.style.display = 'block';
+        resultDiv.scrollIntoView({ behavior: 'smooth' });
+    }
+    
+    function showError(message) {
+        const errorContainer = document.getElementById('error-container');
+        const errorMessage = document.getElementById('error-message');
+        
+        errorMessage.textContent = message;
+        errorContainer.style.display = 'block';
+        errorContainer.scrollIntoView({ behavior: 'smooth' });
+    }
+    
+    function clearFaceImages() {
+        faceImageA = null;
+        faceImageB = null;
+        
+        const zoneA = document.getElementById('face-upload-a');
+        const zoneB = document.getElementById('face-upload-b');
+        
+        zoneA.innerHTML = '<span class="material-symbols-rounded" style="font-size: 3rem; color: #6c757d; margin-bottom: 1rem;">person</span><div class="upload-text">Drop Face A here</div><div class="upload-hint">First face to compare</div>';
+        zoneB.innerHTML = '<span class="material-symbols-rounded" style="font-size: 3rem; color: #6c757d; margin-bottom: 1rem;">person</span><div class="upload-text">Drop Face B here</div><div class="upload-hint">Second face to compare</div>';
+        
+        zoneA.classList.remove('has-image');
+        zoneB.classList.remove('has-image');
+        
+        document.getElementById('face-result').style.display = 'none';
+        document.getElementById('error-container').style.display = 'none';
+        
+        M.toast({html: 'Face images cleared', classes: 'blue'});
+    }
+    
+    function setupUploadZone(zoneId, inputId, callback) {
+        const zone = document.getElementById(zoneId);
+        const input = document.getElementById(inputId);
+        
+        zone.addEventListener('click', () => input.click());
+        
+        zone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            zone.classList.add('dragover');
+        });
+        
+        zone.addEventListener('dragleave', () => {
+            zone.classList.remove('dragover');
+        });
+        
+        zone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            zone.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0], zone, callback);
+            }
+        });
+        
+        input.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0], zone, callback);
+            }
+        });
+    }
+    
+    function handleFile(file, zone, callback) {
+        if (!file.type.startsWith('image/')) {
+            M.toast({html: 'Please select an image file.', classes: 'red'});
+            return;
+        }
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = document.createElement('img');
+            img.src = e.target.result;
+            img.style.maxWidth = '100%';
+            img.style.maxHeight = '200px';
+            img.style.borderRadius = '8px';
+            img.style.marginBottom = '1rem';
+            
+            zone.innerHTML = '';
+            zone.appendChild(img);
+            zone.classList.add('has-image');
+            
+            const removeBtn = document.createElement('button');
+            removeBtn.innerHTML = '<span class="material-symbols-rounded">close</span>';
+            removeBtn.className = 'btn-small red waves-effect waves-light';
+            removeBtn.style.position = 'absolute';
+            removeBtn.style.top = '10px';
+            removeBtn.style.right = '10px';
+            removeBtn.onclick = (e) => {
+                e.stopPropagation();
+                if (zone.id === 'face-upload-a') {
+                    faceImageA = null;
+                    zone.innerHTML = '<span class="material-symbols-rounded" style="font-size: 3rem; color: #6c757d; margin-bottom: 1rem;">person</span><div class="upload-text">Drop Face A here</div><div class="upload-hint">First face to compare</div>';
+                } else {
+                    faceImageB = null;
+                    zone.innerHTML = '<span class="material-symbols-rounded" style="font-size: 3rem; color: #6c757d; margin-bottom: 1rem;">person</span><div class="upload-text">Drop Face B here</div><div class="upload-hint">Second face to compare</div>';
+                }
+                zone.classList.remove('has-image');
+            };
+            zone.appendChild(removeBtn);
+            
+            callback(file, e.target.result);
+        };
+        reader.readAsDataURL(file);
+    }
+    
+    // Initialize upload zones
+    document.addEventListener('DOMContentLoaded', function() {
+        setupUploadZone('face-upload-a', 'face-file-a', (file, dataUrl) => {
+            faceImageA = file;
+        });
+        
+        setupUploadZone('face-upload-b', 'face-file-b', (file, dataUrl) => {
+            faceImageB = file;
+        });
+    });
+</script>
+{% endblock %}

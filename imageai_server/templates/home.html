@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+
+{% block title %}ImageAI Server{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col s12">
+            <div class="center-align" style="margin-top: 2rem;">
+                <h1><img src="/static/icon.png" alt="ImageAIServer Icon" style="height: 1em; vertical-align: middle;"> ImageAIServer</h1>
+                <p class="grey-text">Privacy-focused AI inference server monitoring and quick access</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Server Status Section -->
+    <div class="row">
+        <div class="col s12">
+            <div class="card-panel green lighten-5" style="border-left: 4px solid #4caf50;">
+                <p>
+                    <span class="material-symbols-rounded" style="color: #28a745; vertical-align: middle;">check_circle</span> 
+                    <strong>Server Status:</strong> Running and healthy
+                </p>
+                <div style="margin-top: 1rem;">
+                    <div id="backend-status-loading" style="font-size: 0.9rem;">Loading backend status...</div>
+                    <div id="backend-status-table" style="display: none;">
+                        <table class="striped responsive-table" style="margin-top: 0.5rem; font-size: 0.9rem;">
+                            <thead>
+                                <tr>
+                                    <th>Backend</th>
+                                    <th>Status</th>
+                                    <th>Models</th>
+                                    <th>Description</th>
+                                </tr>
+                            </thead>
+                            <tbody id="backend-table-body">
+                            </tbody>
+                        </table>
+                        <div style="margin-top: 1rem; font-size: 0.9rem;">
+                            <strong>System:</strong> <span id="system-status"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Quick Actions Section - Only show on mobile/tablet where nav is collapsed -->
+    <div class="row hide-on-large-only">
+        <div class="col s12">
+            <h4 class="center-align" style="margin: 2rem 0 1rem 0; color: #333;">Quick Actions</h4>
+        </div>
+    </div>
+    <div class="row hide-on-large-only">
+        <div class="col s12 m6">
+            <a href="/ui/models" class="card-panel hoverable center-align" style="display: block; text-decoration: none; color: inherit; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <span class="material-symbols-rounded" style="font-size: 3rem; margin-bottom: 1rem;">settings</span>
+                <h5 style="margin: 0.5rem 0; color: white;">Models</h5>
+                <p style="margin: 0; opacity: 0.9;">Manage ONNX models</p>
+            </a>
+        </div>
+        <div class="col s12 m6">
+            <a href="/ui/vision-chat" class="card-panel hoverable center-align" style="display: block; text-decoration: none; color: inherit; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <span class="material-symbols-rounded" style="font-size: 3rem; margin-bottom: 1rem;">visibility</span>
+                <h5 style="margin: 0.5rem 0; color: white;">Vision Chat</h5>
+                <p style="margin: 0; opacity: 0.9;">Vision-language models</p>
+            </a>
+        </div>
+        <div class="col s12 m6">
+            <a href="/ui/compare-faces" class="card-panel hoverable center-align" style="display: block; text-decoration: none; color: inherit; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <span class="material-symbols-rounded" style="font-size: 3rem; margin-bottom: 1rem;">face</span>
+                <h5 style="margin: 0.5rem 0; color: white;">Compare Faces</h5>
+                <p style="margin: 0; opacity: 0.9;">Face similarity</p>
+            </a>
+        </div>
+        <div class="col s12 m6">
+            <a href="/ui/generate" class="card-panel hoverable center-align" style="display: block; text-decoration: none; color: inherit; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <span class="material-symbols-rounded" style="font-size: 3rem; margin-bottom: 1rem;">palette</span>
+                <h5 style="margin: 0.5rem 0; color: white;">Generate</h5>
+                <p style="margin: 0; opacity: 0.9;">Create images with AI</p>
+            </a>
+        </div>
+        <div class="col s12 m6">
+            <a href="/docs" class="card-panel hoverable center-align" style="display: block; text-decoration: none; color: inherit; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <span class="material-symbols-rounded" style="font-size: 3rem; margin-bottom: 1rem;">book</span>
+                <h5 style="margin: 0.5rem 0; color: white;">API Docs</h5>
+                <p style="margin: 0; opacity: 0.9;">Interactive docs</p>
+            </a>
+        </div>
+    </div>
+    
+    <!-- API Information Section -->
+    <div class="row">
+        <div class="col s12">
+            <h4 class="center-align" style="margin: 2rem 0 1rem 0; color: #333;">API Endpoints</h4>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col s12">
+            <div class="card-panel">
+                <div class="api-endpoints" style="font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;">
+                    <div style="margin: 0.5rem 0; padding: 0.3rem 0; color: #6f42c1;"><strong>POST</strong> /v1/chat/completions <span style="color: #666;">• Vision + text inference (ONNX)</span></div>
+                    <div style="margin: 0.5rem 0; padding: 0.3rem 0; color: #6f42c1;"><strong>POST</strong> /chat-server/v1/chat/completions/torch <span style="color: #666;">• PyTorch models (optional)</span></div>
+                    <div style="margin: 0.5rem 0; padding: 0.3rem 0; color: #6f42c1;"><strong>POST</strong> /v1/image/compare_faces <span style="color: #666;">• Face comparison</span></div>
+                    <div style="margin: 0.5rem 0; padding: 0.3rem 0; color: #6f42c1;"><strong>POST</strong> /v1/images/generations <span style="color: #666;">• Image generation</span></div>
+                    <div style="margin: 0.5rem 0; padding: 0.3rem 0; color: #6f42c1;"><strong>GET</strong> /v1/system/status <span style="color: #666;">• System uptime and memory</span></div>
+                    <div style="margin: 0.5rem 0; padding: 0.3rem 0; color: #6f42c1;"><strong>GET</strong> /v1/backends <span style="color: #666;">• Backend availability status</span></div>
+                    <div style="margin: 0.5rem 0; padding: 0.3rem 0; color: #6f42c1;"><strong>GET</strong> /v1/models <span style="color: #666;">• List available models</span></div>
+                    <div style="margin: 0.5rem 0; padding: 0.3rem 0; color: #6f42c1;"><strong>GET</strong> /health <span style="color: #666;">• Server health check</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block js_init %}
+// Load backend status
+Promise.all([
+    fetch('/v1/backends').then(r => r.json()),
+    fetch('/v1/system/status').then(r => r.json()).catch(() => null)
+]).then(([backendsData, systemData]) => {
+    // Helper function to get status badge
+    function getStatusBadge(available, initialized) {
+        if (available && initialized) {
+            return '<span style="background: #4caf50; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: 500;">OK</span>';
+        } else if (available && !initialized) {
+            return '<span style="background: #ff9800; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: 500;">Issue</span>';
+        } else {
+            return '<span style="background: #9e9e9e; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: 500;">Unavailable</span>';
+        }
+    }
+    
+    // Build table rows for backends
+    const backends = [
+        {
+            name: 'ONNX',
+            data: backendsData.backends.onnx,
+            description: 'Fast inference'
+        },
+        {
+            name: 'PyTorch', 
+            data: backendsData.backends.pytorch,
+            description: 'General purpose'
+        },
+        {
+            name: 'MLX',
+            data: backendsData.backends.mlx || {available: false, initialized: false, models_count: 0},
+            description: 'Vision chat'
+        },
+        {
+            name: 'CoreML',
+            data: backendsData.backends.coreml || {available: false, initialized: false, models_count: 0},
+            description: 'Apple native'
+        }
+    ];
+    
+    const tableBody = document.getElementById('backend-table-body');
+    tableBody.innerHTML = '';
+    
+    backends.forEach(backend => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td><strong>${backend.name}</strong></td>
+            <td>${getStatusBadge(backend.data.available, backend.data.initialized)}</td>
+            <td>${backend.data.models_count || 0}</td>
+            <td style="color: #666;">${backend.description}</td>
+        `;
+        tableBody.appendChild(row);
+    });
+    
+    // Build GPU status
+    let gpuStatus = '';
+    if (backendsData.gpu) {
+        const gpu = backendsData.gpu;
+        if (gpu.error || gpu.torch_not_available) {
+            gpuStatus = '<span class="material-symbols-rounded" style="color: #dc3545; vertical-align: middle;">cancel</span> GPU';
+        } else {
+            const parts = [];
+            if (gpu.cuda_available) {
+                parts.push(`<span class="material-symbols-rounded" style="color: #28a745; vertical-align: middle;">check_circle</span> CUDA (${gpu.cuda_device_count} device${gpu.cuda_device_count !== 1 ? 's' : ''})`);
+            }
+            if (gpu.mps_available) {
+                parts.push('<span class="material-symbols-rounded" style="color: #28a745; vertical-align: middle;">check_circle</span> MPS');
+            }
+            if (parts.length === 0) {
+                parts.push('<span class="material-symbols-rounded" style="color: #6c757d; vertical-align: middle;">computer</span> CPU only');
+            }
+            gpuStatus = parts.join(', ');
+            
+            if (gpu.current_device) {
+                gpuStatus += ` | Using: ${gpu.current_device}`;
+            }
+        }
+    }
+    
+    // GPU status removed - now part of backend descriptions
+    
+    // Build system status
+    let systemInfo = '';
+    if (systemData) {
+        const uptime = systemData.uptime_hours ? `${systemData.uptime_hours.toFixed(1)}h` : 'Unknown';
+        const memory = systemData.memory_usage_mb ? `${systemData.memory_usage_mb.toFixed(0)} MB` : 'Unknown';
+        systemInfo = `Uptime: ${uptime}, Memory: ${memory}`;
+    } else {
+        systemInfo = 'Status unavailable';
+    }
+    document.getElementById('system-status').innerHTML = systemInfo;
+    
+    // Show table, hide loading
+    document.getElementById('backend-status-loading').style.display = 'none';
+    document.getElementById('backend-status-table').style.display = 'block';
+    
+}).catch(() => {
+    document.getElementById('backend-status-loading').innerHTML = 
+        '<strong>Status:</strong> <span style="color: #dc3545;">Error loading backend status</span>';
+});
+{% endblock %}

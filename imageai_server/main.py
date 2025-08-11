@@ -1,12 +1,15 @@
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi.templating import Jinja2Templates
 from fastapi.openapi.docs import get_swagger_ui_html
 import importlib
 import pkgutil
 import logging
+import time
+import psutil
 from .shared.manage_cache import list_cached_entries
 from .shared.model_types import ModelType
 
@@ -19,6 +22,13 @@ app = FastAPI(
 )
 
 STATIC_DIR = Path(__file__).resolve().parent / "static" / "manage"
+TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+
+# Initialize Jinja2 templates
+templates = Jinja2Templates(directory=TEMPLATES_DIR)
+
+# Track server start time for uptime calculation
+SERVER_START_TIME = time.time()
 
 # Auto-discover and register all routers
 def register_routers():
@@ -29,354 +39,97 @@ def register_routers():
         if (app_path.is_dir() and 
             not app_path.name.startswith('_') and 
             not app_path.name == 'shared' and
+            not app_path.name == 'multimodal_chat' and  # Skip - handled by chat_server
             (app_path / 'router.py').exists()):
             
             try:
                 # Import the router module using relative import
                 module_name = f".{app_path.name}.router"
                 module = importlib.import_module(module_name, package=__package__)
-                
+
                 if hasattr(module, 'router'):
                     router = module.router
                     service_name = app_path.name.replace('_', '-')
-                    
-                    # Register with service prefix
-                    app.include_router(router, prefix=f"/{service_name}", tags=[service_name])
-                    print(f"✅ Registered {service_name} router at /{service_name}")
-                    
-                    # Special case: multimodal chat also gets root-level OpenAI compatibility
-                    if app_path.name == 'multimodal_chat':
-                        app.include_router(router, tags=["openai-compatible"])
-                        print(f"✅ Registered multimodal-chat router at root level for OpenAI compatibility")
-                        
+                    # allow module to specify prefix/tag
+                    prefix = getattr(module, 'router_prefix', f"/{service_name}")
+                    tag    = getattr(module, 'router_tag', service_name)
+
+                    app.include_router(router, prefix=prefix, tags=[tag])
+                    print(f"✅ Registered {app_path.name} router at {prefix}")
             except Exception as e:
                 print(f"❌ Failed to register {app_path.name} router: {e}")
 
 register_routers()
 
+# Manually register VLM router
+try:
+    from .multimodal_chat.vlm_router import router as vlm_router
+    app.include_router(vlm_router, prefix="/v1/vlm", tags=["vlm"])
+    print("✅ Registered VLM router at /v1/vlm")
+except Exception as e:
+    print(f"❌ Failed to register VLM router: {e}")
+
 # Root redirect to main UI
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", include_in_schema=False)
 async def root():
-    """Root endpoint with helpful navigation to all UIs."""
-    return HTMLResponse(content="""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ImageAI Server</title>
-    <style>
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f8f9fa;
-            margin: 0;
-            padding: 0;
-            min-height: 100vh;
-        }
-        
-        .main-container { 
-            max-width: 1000px;
-            margin: 2rem auto;
-            padding: 0 2rem;
-            text-align: center;
-        }
-        
-        h1 { 
-            font-size: 2.5rem; 
-            margin-bottom: 1rem; 
-            color: #333;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        
-        .subtitle { 
-            color: #666; 
-            font-size: 1.2rem; 
-            margin-bottom: 2rem; 
-        }
-        
-        .links { 
-            display: grid; 
-            gap: 1.5rem; 
-            margin: 2rem 0; 
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-        }
-        
-        .link { 
-            display: block; 
-            padding: 1.5rem 2rem; 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 12px; 
-            text-decoration: none; 
-            color: white;
-            transition: all 0.3s ease; 
-            font-size: 1.1rem;
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-        }
-        
-        .link:hover { 
-            transform: translateY(-4px);
-            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
-        }
-        
-        .link strong { 
-            display: block; 
-            font-size: 1.3rem; 
-            margin-bottom: 0.5rem; 
-        }
-        
-        .link small { 
-            opacity: 0.9; 
-            font-size: 1rem; 
-        }
-        
-        .status { 
-            margin-top: 2rem; 
-            padding: 1rem 0; 
-            color: #155724;
-            border-left: 4px solid #28a745;
-            padding-left: 1rem;
-            text-align: left;
-        }
-        
-        .api-endpoints { 
-            margin-top: 2rem; 
-            text-align: left; 
-            color: #495057;
-            padding: 1.5rem 0; 
-            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-            border-top: 1px solid #e9ecef;
-            padding-top: 1.5rem;
-        }
-        
-        .api-endpoints strong { 
-            color: #333; 
-            display: block; 
-            margin-bottom: 0.5rem; 
-        }
-        
-        .endpoint { 
-            margin: 0.5rem 0; 
-            padding: 0.3rem 0; 
-            color: #6f42c1; 
-        }
-        
-        @media (max-width: 768px) {
-            .main-container { 
-                margin: 1rem; 
-                padding: 1.5rem; 
-            }
-            .links { 
-                grid-template-columns: 1fr; 
-            }
-        }
-    </style>
-</head>
-<body>
-    <script src="/static/manage/navigation.js"></script>
-    
-    <div class="main-container">
-        <h1><img src="/static/icon.png" alt="ImageAIServer Icon" style="height: 1em; vertical-align: middle;"> ImageAIServer</h1>
-        <p class="subtitle">Privacy-focused AI inference server monitoring and quick access</p>
-        
-        <!-- Server Status Section -->
-        <div class="status">
-            ✅ <strong>Server Status:</strong> Running and healthy<br>
-            <div style="margin-top: 0.5rem; font-size: 0.9rem;">
-                <span id="backend-status">Loading backend status...</span>
-            </div>
-        </div>
-        
-        <script>
-        // Load backend status
-        fetch('/v1/backends')
-            .then(response => response.json())
-            .then(data => {
-                const onnxStatus = data.backends.onnx.available ? '✅ ONNX' : '❌ ONNX';
-                const pytorchStatus = data.backends.pytorch.available ? '✅ PyTorch' : '❌ PyTorch';
-                const onnxCount = data.backends.onnx.models_count || 0;
-                const pytorchCount = data.backends.pytorch.models_count || 0;
-                
-                // Build GPU status
-                let gpuStatus = '';
-                if (data.gpu) {
-                    const gpu = data.gpu;
-                    if (gpu.error || gpu.torch_not_available) {
-                        gpuStatus = '❌ GPU';
-                    } else {
-                        const parts = [];
-                        if (gpu.cuda_available) {
-                            parts.push(`✅ CUDA (${gpu.cuda_device_count} device${gpu.cuda_device_count !== 1 ? 's' : ''})`);
-                        }
-                        if (gpu.mps_available) {
-                            parts.push('✅ MPS');
-                        }
-                        if (parts.length === 0) {
-                            parts.push('💻 CPU only');
-                        }
-                        gpuStatus = parts.join(', ');
-                        
-                        if (gpu.current_device) {
-                            gpuStatus += ` | Using: ${gpu.current_device}`;
-                        }
-                    }
-                }
-                
-                document.getElementById('backend-status').innerHTML = 
-                    `<strong>Backends:</strong> ${onnxStatus} (${onnxCount} models), ${pytorchStatus} (${pytorchCount} models)<br>` +
-                    `<strong>Acceleration:</strong> ${gpuStatus}`;
-            })
-            .catch(() => {
-                document.getElementById('backend-status').innerHTML = 
-                    '<strong>Backends:</strong> Status unavailable';
-            });
-        </script>
-        
-        <!-- Quick Actions Section -->
-        <h2 style="margin-top: 2rem; margin-bottom: 1rem; color: #333;">Quick Actions</h2>
-        <div class="links">
-            <a href="/manage/ui/" class="link">
-                🌐 <strong>Model Management</strong>
-                <small>Download and manage ONNX models</small>
-            </a>
-            <a href="/manage/ui/vision-test.html" class="link">
-                🎯 <strong>Vision & Face Testing</strong>
-                <small>Drag & drop testing interface</small>
-            </a>
-            <a href="/docs" class="link">
-                📚 <strong>API Documentation</strong>
-                <small>Interactive OpenAPI docs</small>
-            </a>
-        </div>
-        
-        <!-- API Information Section -->
-        <h2 style="margin-top: 2rem; margin-bottom: 1rem; color: #333;">API Endpoints</h2>
-        <div class="api-endpoints">
-            <div class="endpoint"><strong>POST</strong> /v1/chat/completions <span style="color: #666;">• Vision + text inference (ONNX)</span></div>
-            <div class="endpoint"><strong>POST</strong> /chat-server/v1/chat/completions/torch <span style="color: #666;">• PyTorch models (optional)</span></div>
-            <div class="endpoint"><strong>POST</strong> /v1/image/compare_faces <span style="color: #666;">• Face comparison</span></div>
-            <div class="endpoint"><strong>GET</strong> /v1/backends <span style="color: #666;">• Backend availability status</span></div>
-            <div class="endpoint"><strong>GET</strong> /v1/models <span style="color: #666;">• List available models</span></div>
-            <div class="endpoint"><strong>GET</strong> /health <span style="color: #666;">• Server health check</span></div>
-        </div>
-    </div>
-</body>
-</html>
-    """)
+    """Redirect root to UI."""
+    return RedirectResponse(url="/ui/")
 
-# Quick redirect for common paths
-@app.get("/ui")
-async def ui_redirect():
-    """Redirect /ui to the main management UI."""
-    return RedirectResponse(url="/manage/ui/")
+# UI Pages
+@app.get("/ui/", response_class=HTMLResponse, include_in_schema=False)
+async def ui_home(request: Request):
+    """Main UI homepage."""
+    return templates.TemplateResponse("home.html", {
+        "request": request,
+        "current_page": "home"
+    })
 
-@app.get("/test")
-async def test_redirect():
-    """Redirect /test to the vision test UI."""
-    return RedirectResponse(url="/manage/ui/vision-test.html")
+@app.get("/ui/models", response_class=HTMLResponse, include_in_schema=False)
+async def ui_models(request: Request):
+    """Model management UI."""
+    return templates.TemplateResponse("models.html", {
+        "request": request,
+        "current_page": "models"
+    })
 
-@app.get("/docs", response_class=HTMLResponse)
-async def custom_swagger_ui_html():
-    """Custom docs page with navigation."""
-    return HTMLResponse(content=f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <title>ImageAIServer API Documentation</title>
-    <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui.css" />
-    <style>
-        body { margin: 0; padding: 0; }
-        .imageai-nav {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            position: sticky;
-            top: 0;
-            z-index: 1000;
-        }
-        .nav-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0 1rem;
-            height: 60px;
-        }
-        .nav-brand .brand-link {
-            color: white;
-            text-decoration: none;
-            font-size: 1.5rem;
-            font-weight: bold;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        .nav-brand .brand-link:hover { color: rgba(255,255,255,0.9); }
-        .nav-links {
-            display: flex;
-            gap: 0.5rem;
-            align-items: center;
-        }
-        .nav-link {
-            color: rgba(255,255,255,0.9);
-            text-decoration: none;
-            padding: 0.5rem 1rem;
-            border-radius: 6px;
-            transition: all 0.3s ease;
-            font-size: 0.9rem;
-            white-space: nowrap;
-        }
-        .nav-link:hover {
-            background: rgba(255,255,255,0.1);
-            color: white;
-            transform: translateY(-1px);
-        }
-        .nav-link.active {
-            background: rgba(255,255,255,0.2);
-            color: white;
-        }
-        #swagger-ui { padding-top: 0; }
-        .swagger-ui .topbar { display: none; }
-    </style>
-</head>
-<body>
-    <nav class="imageai-nav">
-        <div class="nav-container">
-            <div class="nav-brand">
-                <a href="/" class="brand-link">🤖 ImageAIServer</a>
-            </div>
-            <div class="nav-links">
-                <a href="/" class="nav-link" title="Home">🏠 Home</a>
-                <a href="/manage/ui/" class="nav-link" title="Model Management">🌐 Models</a>
-                <a href="/manage/ui/vision-test.html" class="nav-link" title="Vision & Face Testing">🎯 Test</a>
-                <a href="/docs" class="nav-link active" title="API Documentation">📚 Docs</a>
-            </div>
-        </div>
-    </nav>
-    
-    <div id="swagger-ui"></div>
-    
-    <script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-bundle.js"></script>
-    <script>
-        const ui = SwaggerUIBundle({
-            url: '/openapi.json',
-            dom_id: '#swagger-ui',
-            presets: [
-                SwaggerUIBundle.presets.apis,
-                SwaggerUIBundle.presets.standalone
-            ],
-            layout: "BaseLayout",
-            deepLinking: true,
-            showExtensions: true,
-            showCommonExtensions: true,
-            tryItOutEnabled: true
-        });
-    </script>
-</body>
-</html>
-    """)
+@app.get("/ui/generate", response_class=HTMLResponse, include_in_schema=False)
+async def ui_generate(request: Request):
+    """Generate images UI."""
+    return templates.TemplateResponse("generate_v4.html", {
+        "request": request,
+        "current_page": "generate"
+    })
+
+@app.get("/ui/vision-chat", response_class=HTMLResponse, include_in_schema=False)
+async def ui_vision_chat(request: Request):
+    """Vision chat UI."""
+    return templates.TemplateResponse("vision-chat.html", {
+        "request": request,
+        "current_page": "vision-chat"
+    })
+
+@app.get("/ui/compare-faces", response_class=HTMLResponse, include_in_schema=False)
+async def ui_compare_faces(request: Request):
+    """Face comparison UI."""
+    return templates.TemplateResponse("compare-faces.html", {
+        "request": request,
+        "current_page": "compare-faces"
+    })
+
+@app.get("/ui/docs", response_class=HTMLResponse, include_in_schema=False)
+async def ui_docs(request: Request):
+    """API documentation UI."""
+    return templates.TemplateResponse("docs.html", {
+        "request": request,
+        "current_page": "docs"
+    })
+
+# Favicon redirect
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    """Redirect favicon requests to the static icon."""
+    return RedirectResponse(url="/static/icon.png")
+
 
 app.mount(
     "/manage/ui",
@@ -399,7 +152,7 @@ app.mount(
 )
 
 
-@app.get("/v1/backends")
+@app.get("/v1/backends", tags=["system"])
 async def list_backends():
     """List available model backends and their status."""
     try:
@@ -434,27 +187,64 @@ async def list_backends():
             gpu_info = {"error": str(e)}
         
         backend_info = {}
-        for backend_type in ["onnx", "pytorch"]:
+        for backend_type in ["onnx", "pytorch", "mlx", "coreml"]:
             if backend_type == "onnx":
                 from .shared.onnx_loader import ONNX_AVAILABLE
                 available = ONNX_AVAILABLE
-            else:  # pytorch
+            elif backend_type == "pytorch":
                 from .shared.torch_loader import TORCH_AVAILABLE
                 available = TORCH_AVAILABLE
+            elif backend_type == "mlx":
+                # Check MLX VLM availability
+                try:
+                    from .multimodal_chat.vlm_service import get_vlm_service
+                    vlm_service = get_vlm_service()
+                    available_vlm_backends = vlm_service.get_available_backends()
+                    available = any(b['name'] == 'mlx' and b['available'] for b in available_vlm_backends)
+                except Exception:
+                    available = False
+            else:  # coreml
+                # Check CoreML availability (Apple Silicon + coremltools)
+                try:
+                    import platform
+                    import coremltools as ct
+                    available = platform.system() == "Darwin"
+                except ImportError:
+                    available = False
             
             backend_info[backend_type] = {
                 "available": available,
-                "initialized": backend_type in [b.value for b in available_backends],
+                "initialized": available if backend_type in ["mlx", "coreml"] else backend_type in [b.value for b in available_backends],
                 "models_count": 0
             }
             
-            if available and backend_type in [b.value for b in available_backends]:
-                # Get model count
-                all_models = manager.list_available_models()
-                from .shared.model_manager import BackendType
-                backend_enum = BackendType(backend_type)
-                if backend_enum in all_models:
-                    backend_info[backend_type]["models_count"] = len(all_models[backend_enum])
+            if available:
+                if backend_type == "mlx":
+                    # Count MLX VLM models
+                    try:
+                        from .multimodal_chat.vlm_service import get_vlm_service
+                        vlm_service = get_vlm_service()
+                        mlx_strategy = vlm_service.get_strategy("mlx")
+                        if mlx_strategy:
+                            supported_models = mlx_strategy.get_supported_models()
+                            backend_info[backend_type]["models_count"] = len(supported_models)
+                    except Exception:
+                        pass
+                elif backend_type == "coreml":
+                    # Count CoreML models (currently just diffusion models)
+                    # TODO: Could expand to count actual .mlmodel files if needed
+                    try:
+                        # For now, assume CoreML diffusion is available if CoreML is available
+                        backend_info[backend_type]["models_count"] = 1  # SD1.5 CoreML
+                    except Exception:
+                        pass
+                elif backend_type in [b.value for b in available_backends]:
+                    # Get model count for ONNX/PyTorch
+                    all_models = manager.list_available_models()
+                    from .shared.model_manager import BackendType
+                    backend_enum = BackendType(backend_type)
+                    if backend_enum in all_models:
+                        backend_info[backend_type]["models_count"] = len(all_models[backend_enum])
         
         return {
             "backends": backend_info,
@@ -466,7 +256,9 @@ async def list_backends():
         return {
             "backends": {
                 "onnx": {"available": False, "initialized": False, "models_count": 0},
-                "pytorch": {"available": False, "initialized": False, "models_count": 0}
+                "pytorch": {"available": False, "initialized": False, "models_count": 0},
+                "mlx": {"available": False, "initialized": False, "models_count": 0},
+                "coreml": {"available": False, "initialized": False, "models_count": 0}
             },
             "gpu": {"error": "Could not determine GPU status"},
             "default_selection": "auto",
@@ -475,37 +267,45 @@ async def list_backends():
         }
 
 
-@app.get("/v1/models")
-async def list_models():
-    """List available chat-compatible models in OpenAI-compatible format."""
+
+
+@app.get("/v1/system/status", tags=["system"])
+async def get_system_status():
+    """Get system status including uptime and memory usage."""
     try:
-        cached_entries = list_cached_entries()
+        # Calculate uptime
+        current_time = time.time()
+        uptime_seconds = current_time - SERVER_START_TIME
+        uptime_hours = uptime_seconds / 3600
         
-        # Filter for ONNX models that are LLM-capable and create OpenAI-compatible response
-        models = []
-        chat_compatible_types = ModelType.chat_compatible_types()
+        # Get memory usage
+        process = psutil.Process()
+        memory_info = process.memory_info()
+        memory_usage_mb = memory_info.rss / 1024 / 1024  # Convert bytes to MB
         
-        for entry in cached_entries:
-            if (entry["path"].endswith(".onnx") and 
-                entry["kind"] in [t.value for t in chat_compatible_types]):
-                
-                # Always create full model ID with repo and complete file path
-                # This gives users the exact string they need for API calls
-                model_id = f"{entry['repo']}/{entry['path']}"
-                
-                models.append({
-                    "id": model_id,
-                    "object": "model",
-                    "created": int(entry["last_used"]),
-                    "owned_by": entry["repo"].split("/")[0] if "/" in entry["repo"] else "huggingface",
-                })
+        # Get system memory info
+        system_memory = psutil.virtual_memory()
+        system_memory_total_gb = system_memory.total / 1024 / 1024 / 1024
+        system_memory_used_percent = system_memory.percent
         
         return {
-            "object": "list",
-            "data": models
+            "uptime_seconds": uptime_seconds,
+            "uptime_hours": uptime_hours,
+            "memory_usage_mb": memory_usage_mb,
+            "system_memory_total_gb": system_memory_total_gb,
+            "system_memory_used_percent": system_memory_used_percent,
+            "status": "healthy"
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return {
+            "uptime_seconds": None,
+            "uptime_hours": None,
+            "memory_usage_mb": None,
+            "system_memory_total_gb": None,
+            "system_memory_used_percent": None,
+            "status": "error",
+            "error": str(e)
+        }
 
 
 def _is_model_downloaded(repo_id: str, required_files: Optional[List[str]] = None) -> bool:
@@ -579,28 +379,100 @@ def _is_model_downloaded(repo_id: str, required_files: Optional[List[str]] = Non
         return False
 
 
-@app.get("/v1/vision-models")
+@app.get("/v1/health", tags=["system"])
+async def health_check():
+    """Health check endpoint for system status."""
+    try:
+        from .shared.model_manager import get_model_manager
+        from .shared.torch_loader import TORCH_AVAILABLE
+        
+        model_manager = get_model_manager()
+        available_backends = [b.value for b in model_manager.get_available_backends()]
+        
+        # Check critical dependencies
+        dependency_status = {}
+        critical_deps = [
+            "onnxruntime",
+            "dghs-imgutils", 
+            "transformers",
+            "huggingface_hub"
+        ]
+        
+        for dep in critical_deps:
+            try:
+                if dep == "dghs-imgutils":
+                    import imgutils
+                    dependency_status[dep] = "available"
+                elif dep == "onnxruntime":
+                    import onnxruntime
+                    dependency_status[dep] = "available"
+                elif dep == "transformers":
+                    import transformers
+                    dependency_status[dep] = "available"
+                elif dep == "huggingface_hub":
+                    import huggingface_hub
+                    dependency_status[dep] = "available"
+            except ImportError:
+                dependency_status[dep] = "missing"
+        
+        return {
+            "status": "ok",
+            "service": "imageai-server",
+            "pytorch_available": TORCH_AVAILABLE,
+            "available_backends": available_backends,
+            "dependencies": dependency_status
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "service": "imageai-server",
+            "error": str(e)
+        }
+
+@app.get("/v1/vision-models", tags=["system"])
 async def list_vision_models():
-    """List only locally available vision-capable models (ONNX and PyTorch/GGUF)."""
+    """List only locally available vision-capable models with available backends."""
     try:
         from .shared.model_identifier import ModelCatalog
         from .shared.model_types import get_available_model_quants, get_curated_model_config
         
+        backend_availability = {}
+        
+        try:
+            from .shared.onnx_loader import ONNX_AVAILABLE
+            backend_availability['onnx'] = ONNX_AVAILABLE
+        except ImportError:
+            backend_availability['onnx'] = False
+            
+        try:
+            from .shared.torch_loader import TORCH_AVAILABLE
+            backend_availability['pytorch'] = TORCH_AVAILABLE
+        except ImportError:
+            backend_availability['pytorch'] = False
+            
+        try:
+            from .multimodal_chat.vlm_service import get_vlm_service
+            vlm_service = get_vlm_service()
+            available_vlm_backends = vlm_service.get_available_backends()
+            backend_availability['mlx'] = any(b['name'] == 'mlx' and b['available'] for b in available_vlm_backends)
+        except Exception:
+            backend_availability['mlx'] = False
+        
         models = []
         
-        # Add ONNX models from curated list (only if downloaded)
-        onnx_models = get_available_model_quants()
+        if backend_availability['onnx']:
+            onnx_models = get_available_model_quants()
+        else:
+            onnx_models = []
         
-        # Model name to repo_id mapping for ONNX models
         onnx_model_repo_mapping = {
             "Gemma-3n-E2B-it-ONNX": "onnx-community/gemma-3n-E2B-it-ONNX",
         }
         
         for model_config in onnx_models:
-            if "/" in model_config:  # Model with quantization
+            if "/" in model_config:
                 model_name, quantization = model_config.split("/", 1)
                 
-                # Get the repo_id for this curated model
                 repo_id = onnx_model_repo_mapping.get(model_name)
                 if not repo_id:
                     logger.warning(f"No repo_id mapping found for ONNX model: {model_name}")
@@ -608,10 +480,7 @@ async def list_vision_models():
                 
                 curated_config = get_curated_model_config(model_config)
                 if curated_config:
-                    # Get required files for this quantization
                     required_files = list(curated_config.values())
-                    
-                    # Only include if model is downloaded locally
                     if _is_model_downloaded(repo_id, required_files):
                         display_name = f"{model_name}/{quantization}"
                         backend = "ONNX"
@@ -625,71 +494,86 @@ async def list_vision_models():
                             "quantization": quantization
                         })
         
-        # Add PyTorch/GGUF models from ModelCatalog (only if downloaded)
-        for model_id, model_info in ModelCatalog.MODELS.items():
-            if model_info.backend.value == "pytorch":
-                # The ModelCatalog uses GGUF repos as repo_id for efficiency, but we need to check
-                # both the original PyTorch repo and GGUF repo for downloads
-                
-                # Mapping from GGUF repo (in catalog) to original PyTorch repo
-                gguf_to_original_mapping = {
-                    "ggml-org/SmolVLM-256M-Instruct-GGUF": "HuggingFaceTB/SmolVLM-256M-Instruct",
-                    "ggml-org/SmolVLM-500M-Instruct-GGUF": "HuggingFaceTB/SmolVLM-500M-Instruct",
-                    "bartowski/ibm-granite_granite-vision-3.2-2b-GGUF": "ibm-granite/granite-vision-3.2-2b",
-                    "bartowski/mistral-community_pixtral-12b-GGUF": "mistralai/pixtral-12b",
-                    "bartowski/google_gemma-3-27b-it-GGUF": "google/gemma-3-27b-it",
-                }
-                
-                original_repo = gguf_to_original_mapping.get(model_info.repo_id)
-                
-                if model_info.repo_id in ModelCatalog.GGUF_QUANTIZATIONS:
-                    # GGUF quantized model - check GGUF repo
-                    if _is_model_downloaded(model_info.repo_id):
-                        quantizations = ModelCatalog.get_available_quantizations(model_info.repo_id)
-                        for quant in quantizations:
+        if backend_availability['pytorch']:
+            for model_id, model_info in ModelCatalog.MODELS.items():
+                if model_info.backend.value == "pytorch":
+                    gguf_to_original_mapping = {
+                        "ggml-org/SmolVLM-256M-Instruct-GGUF": "HuggingFaceTB/SmolVLM-256M-Instruct",
+                        "ggml-org/SmolVLM-500M-Instruct-GGUF": "HuggingFaceTB/SmolVLM-500M-Instruct",
+                        "bartowski/ibm-granite_granite-vision-3.2-2b-GGUF": "ibm-granite/granite-vision-3.2-2b",
+                        "bartowski/mistral-community_pixtral-12b-GGUF": "mistralai/pixtral-12b",
+                        "bartowski/google_gemma-3-27b-it-GGUF": "google/gemma-3-27b-it",
+                    }
+                    
+                    original_repo = gguf_to_original_mapping.get(model_info.repo_id)
+                    
+                    if model_info.repo_id in ModelCatalog.GGUF_QUANTIZATIONS:
+                        if _is_model_downloaded(model_info.repo_id):
+                            quantizations = ModelCatalog.get_available_quantizations(model_info.repo_id)
+                            for quant in quantizations:
+                                display_name = f"{model_info.family.title()} {model_info.size.upper()}"
+                                if model_info.variant and model_info.variant != "instruct":
+                                    display_name += f" {model_info.variant.title()}"
+                                
+                                description = "GGUF"
+                                
+                                models.append({
+                                    "id": f"{model_id}:{quant.value}",
+                                    "name": f"{display_name} ({quant.value.upper()})",
+                                    "backend": "PyTorch/GGUF",
+                                    "description": description,
+                                    "quantization": quant.value.upper()
+                                })
+                        
+                        if original_repo and _is_model_downloaded(original_repo):
                             display_name = f"{model_info.family.title()} {model_info.size.upper()}"
                             if model_info.variant and model_info.variant != "instruct":
                                 display_name += f" {model_info.variant.title()}"
                             
-                            description = "GGUF"
-                            
+                            description = "PyTorch"
                             models.append({
-                                "id": f"{model_id}:{quant.value}",
-                                "name": f"{display_name} ({quant.value.upper()})",
-                                "backend": "PyTorch/GGUF",
+                                "id": f"{model_id}:original",
+                                "name": f"{display_name} (Original)",
+                                "backend": "PyTorch",
                                 "description": description,
-                                "quantization": quant.value.upper()
+                                "quantization": "FP16"
                             })
+                    else:
+                        if _is_model_downloaded(model_info.repo_id):
+                            display_name = f"{model_info.family.title()} {model_info.size.upper()}"
+                            if model_info.variant and model_info.variant != "instruct":
+                                display_name += f" {model_info.variant.title()}"
+                            
+                            description = "PyTorch"
+                            models.append({
+                                "id": model_id,
+                                "name": display_name,
+                                "backend": "PyTorch",
+                                "description": description,
+                                "quantization": "FP16"
+                            })
+        
+        if backend_availability['mlx']:
+            try:
+                from .multimodal_chat.vlm_service import get_vlm_service
+                vlm_service = get_vlm_service()
+                mlx_strategy = vlm_service.get_strategy("mlx")
+                if mlx_strategy:
+                    supported_models = mlx_strategy.get_supported_models()
                     
-                    # Also check original PyTorch repo if it exists and is downloaded
-                    if original_repo and _is_model_downloaded(original_repo):
-                        display_name = f"{model_info.family.title()} {model_info.size.upper()}"
-                        if model_info.variant and model_info.variant != "instruct":
-                            display_name += f" {model_info.variant.title()}"
-                        
-                        description = "PyTorch"
+                    for model_key, model_info in supported_models.items():
                         models.append({
-                            "id": f"{model_id}:original",
-                            "name": f"{display_name} (Original)",
-                            "backend": "PyTorch",
-                            "description": description,
-                            "quantization": "FP16"
+                            "id": model_info["model_id"],
+                            "name": f"MLX {model_info['description']} ({model_info['quantization'].upper()})",
+                            "backend": "MLX",
+                            "description": "MLX",
+                            "quantization": model_info['quantization'].upper()
                         })
-                else:
-                    # Regular PyTorch model without GGUF - check the repo_id directly
-                    if _is_model_downloaded(model_info.repo_id):
-                        display_name = f"{model_info.family.title()} {model_info.size.upper()}"
-                        if model_info.variant and model_info.variant != "instruct":
-                            display_name += f" {model_info.variant.title()}"
-                        
-                        description = "PyTorch"
-                        models.append({
-                            "id": model_id,
-                            "name": display_name,
-                            "backend": "PyTorch",
-                            "description": description,
-                            "quantization": "FP16"
-                        })
+                    
+                    logger.info(f"Added {len(supported_models)} MLX VLM models")
+                
+            except Exception as e:
+                logger.warning(f"Failed to add MLX models to vision-models list: {e}")
         
         return {
             "object": "list",

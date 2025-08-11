@@ -22,18 +22,6 @@ class TorchChatRequest(BaseModel):
     backend: Optional[str] = "pytorch"  # Can override to use ONNX if available
 
 
-@router.get("/health")
-async def health_check():
-    """Health check endpoint for PyTorch chat service."""
-    model_manager = get_model_manager()
-    available_backends = [b.value for b in model_manager.get_available_backends()]
-    
-    return {
-        "status": "ok",
-        "service": "torch-chat",
-        "pytorch_available": TORCH_AVAILABLE,
-        "available_backends": available_backends
-    }
 
 
 @router.get("/models")
@@ -57,7 +45,7 @@ async def list_models():
     }
 
 
-@router.post("/v1/chat/completions/torch")
+@router.post("/completions")
 async def torch_chat_completions(request: Request):
     """PyTorch-optimized chat completions endpoint."""
     if not TORCH_AVAILABLE:
@@ -119,7 +107,7 @@ async def torch_chat_completions(request: Request):
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
 
 
-@router.get("/v1/models/torch")
+@router.get("/models/available")
 async def list_torch_models():
     """OpenAI-compatible models endpoint for PyTorch models."""
     model_manager = get_model_manager()
