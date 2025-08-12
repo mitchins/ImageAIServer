@@ -65,6 +65,17 @@ class RuntimeManager:
                 notes="Maximum NVIDIA performance, 2-3x speedup"
             ),
             
+            # TensorRT-RTX - NVIDIA optimized engines
+            "tensorrt-rtx": RuntimeInfo(
+                name="tensorrt-rtx",
+                display_name="TensorRT-RTX",
+                available=self._check_tensorrt_rtx(),
+                performance_tier=1,
+                memory_efficient=True,
+                hardware_required="NVIDIA RTX/A/H Series (Ampere+)",
+                notes="NVIDIA's optimized TensorRT-RTX engines, 3-5x PyTorch speedup"
+            ),
+            
             # ONNX OpenVINO - Intel optimization
             "onnx-openvino": RuntimeInfo(
                 name="onnx-openvino",
@@ -232,6 +243,36 @@ class RuntimeManager:
         try:
             return hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
         except:
+            return False
+            
+    def _check_tensorrt_rtx(self) -> bool:
+        """Check if TensorRT-RTX backend is available"""
+        try:
+            # Check for TensorRT-RTX library
+            trt_rtx_lib = "/data/nvidia/TensorRT-RTX-1.0.0.21/targets/x86_64-linux-gnu/lib"
+            if not Path(trt_rtx_lib).exists():
+                return False
+                
+            # Check for NVIDIA engines
+            nvidia_engines = Path("/data/nvidia/sdxl_tensorrt_rtx/engines_xl_b1_1024")
+            if not nvidia_engines.exists():
+                return False
+                
+            # Check for engine files
+            engine_files = list(nvidia_engines.glob("*.plan"))
+            if len(engine_files) < 4:  # Need at least clip, clip2, unet, vae
+                return False
+                
+            # Check GPU compute capability (Ampere+ required)
+            if not torch.cuda.is_available():
+                return False
+                
+            compute_capability = torch.cuda.get_device_capability()
+            if compute_capability < (8, 0):  # Ampere minimum
+                return False
+                
+            return True
+        except Exception:
             return False
 
 # Global instance

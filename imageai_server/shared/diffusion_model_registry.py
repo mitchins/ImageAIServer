@@ -19,12 +19,15 @@ logger = logging.getLogger(__name__)
 class Backend(Enum):
     PYTORCH = "pytorch"
     ONNX = "onnx"
+    TENSORRT_RTX = "tensorrt_rtx"
 
 class Quantization(Enum):
     FP32 = "fp32"
     FP16 = "fp16"
     INT8 = "int8"
     BF16 = "bf16"
+    FP8 = "fp8"
+    FP4 = "fp4"
 
 class Component(Enum):
     UNET = "unet"
@@ -155,17 +158,129 @@ class DiffusionModelRegistry:
             description="SDXL PyTorch FP16 - High quality, GPU required"
         )
         
+        sdxl_tensorrt_rtx_bf16 = WorkingSet(
+            name="tensorrt_rtx_bf16",
+            components={
+                Component.UNET: ComponentSpec("stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", quantization=Quantization.BF16, backend=Backend.TENSORRT_RTX),
+                Component.VAE: ComponentSpec("stabilityai/stable-diffusion-xl-base-1.0", subfolder="vae", quantization=Quantization.BF16, backend=Backend.TENSORRT_RTX),
+                Component.TEXT_ENCODER: ComponentSpec("stabilityai/stable-diffusion-xl-base-1.0", subfolder="text_encoder", quantization=Quantization.BF16, backend=Backend.TENSORRT_RTX),
+            },
+            optimal_settings={
+                "num_inference_steps": 30,
+                "guidance_scale": 8.0,
+                "precision": "bf16"
+            },
+            constraints={
+                "max_resolution": 1536,
+                "default_resolution": 1024,
+                "requires_gpu": True,
+                "min_compute_capability": (8, 0)  # Ampere and later
+            },
+            description="SDXL TensorRT-RTX BF16 - Fast inference with TensorRT optimization"
+        )
+        
         self.models["sdxl"] = ModelDefinition(
             model_id="sdxl",
             display_name="Stable Diffusion XL",
             base_repo="stabilityai/stable-diffusion-xl-base-1.0",
             architecture="sdxl",
-            working_sets=[sdxl_pytorch_fp16],
+            working_sets=[sdxl_pytorch_fp16, sdxl_tensorrt_rtx_bf16],
             default_working_set="pytorch_fp16",
             supports_negative_prompt=True,
             max_resolution=1536,
             default_resolution=1024,
             min_resolution=512
+        )
+        
+        # Flux.1-Dev (TensorRT-RTX only)
+        flux_dev_tensorrt_rtx_fp8 = WorkingSet(
+            name="tensorrt_rtx_fp8",
+            components={
+                Component.UNET: ComponentSpec("black-forest-labs/FLUX.1-dev", subfolder="transformer", quantization=Quantization.FP8, backend=Backend.TENSORRT_RTX),
+                Component.VAE: ComponentSpec("black-forest-labs/FLUX.1-dev", subfolder="vae", quantization=Quantization.BF16, backend=Backend.TENSORRT_RTX),
+                Component.TEXT_ENCODER: ComponentSpec("black-forest-labs/FLUX.1-dev", subfolder="text_encoder", quantization=Quantization.BF16, backend=Backend.TENSORRT_RTX),
+            },
+            optimal_settings={
+                "num_inference_steps": 50,
+                "guidance_scale": 3.5,
+                "precision": "fp8"
+            },
+            constraints={
+                "max_resolution": 1024,
+                "default_resolution": 512,
+                "requires_gpu": True,
+                "min_compute_capability": (8, 9)  # Ada Lovelace and later for FP8
+            },
+            description="Flux.1-Dev TensorRT-RTX FP8 - Highest performance on Ada/Blackwell GPUs"
+        )
+        
+        flux_dev_tensorrt_rtx_bf16 = WorkingSet(
+            name="tensorrt_rtx_bf16",
+            components={
+                Component.UNET: ComponentSpec("black-forest-labs/FLUX.1-dev", subfolder="transformer", quantization=Quantization.BF16, backend=Backend.TENSORRT_RTX),
+                Component.VAE: ComponentSpec("black-forest-labs/FLUX.1-dev", subfolder="vae", quantization=Quantization.BF16, backend=Backend.TENSORRT_RTX),
+                Component.TEXT_ENCODER: ComponentSpec("black-forest-labs/FLUX.1-dev", subfolder="text_encoder", quantization=Quantization.BF16, backend=Backend.TENSORRT_RTX),
+            },
+            optimal_settings={
+                "num_inference_steps": 50,
+                "guidance_scale": 3.5,
+                "precision": "bf16"
+            },
+            constraints={
+                "max_resolution": 1024,
+                "default_resolution": 512,
+                "requires_gpu": True,
+                "min_compute_capability": (8, 0)  # Ampere and later
+            },
+            description="Flux.1-Dev TensorRT-RTX BF16 - High performance on Ampere+ GPUs"
+        )
+        
+        self.models["flux1-dev"] = ModelDefinition(
+            model_id="flux1-dev",
+            display_name="Flux.1-Dev",
+            base_repo="black-forest-labs/FLUX.1-dev",
+            architecture="flux",
+            working_sets=[flux_dev_tensorrt_rtx_fp8, flux_dev_tensorrt_rtx_bf16],
+            default_working_set="tensorrt_rtx_bf16",
+            supports_negative_prompt=False,  # Flux doesn't use negative prompts the same way
+            max_resolution=1024,
+            default_resolution=512,
+            min_resolution=256
+        )
+        
+        # Flux.1-Schnell (faster variant)
+        flux_schnell_tensorrt_rtx_bf16 = WorkingSet(
+            name="tensorrt_rtx_bf16",
+            components={
+                Component.UNET: ComponentSpec("black-forest-labs/FLUX.1-schnell", subfolder="transformer", quantization=Quantization.BF16, backend=Backend.TENSORRT_RTX),
+                Component.VAE: ComponentSpec("black-forest-labs/FLUX.1-schnell", subfolder="vae", quantization=Quantization.BF16, backend=Backend.TENSORRT_RTX),
+                Component.TEXT_ENCODER: ComponentSpec("black-forest-labs/FLUX.1-schnell", subfolder="text_encoder", quantization=Quantization.BF16, backend=Backend.TENSORRT_RTX),
+            },
+            optimal_settings={
+                "num_inference_steps": 4,  # Schnell is designed for fewer steps
+                "guidance_scale": 0.0,      # Schnell doesn't use guidance
+                "precision": "bf16"
+            },
+            constraints={
+                "max_resolution": 1024,
+                "default_resolution": 512,
+                "requires_gpu": True,
+                "min_compute_capability": (8, 0)  # Ampere and later
+            },
+            description="Flux.1-Schnell TensorRT-RTX BF16 - Ultra-fast 4-step inference"
+        )
+        
+        self.models["flux1-schnell"] = ModelDefinition(
+            model_id="flux1-schnell",
+            display_name="Flux.1-Schnell",
+            base_repo="black-forest-labs/FLUX.1-schnell",
+            architecture="flux",
+            working_sets=[flux_schnell_tensorrt_rtx_bf16],
+            default_working_set="tensorrt_rtx_bf16",
+            supports_negative_prompt=False,
+            max_resolution=1024,
+            default_resolution=512,
+            min_resolution=256
         )
     
     def get_model(self, model_id: str) -> Optional[ModelDefinition]:
@@ -203,6 +318,19 @@ class DiffusionModelRegistry:
         # Mixed backends are generally not allowed
         if len(backends) > 1:
             issues.append(f"Mixed backends not supported: {list(backends)}")
+        
+        # Check TensorRT-RTX specific constraints
+        if Backend.TENSORRT_RTX in backends:
+            # Check for compute capability constraint
+            min_cc = working_set.constraints.get("min_compute_capability")
+            if min_cc and hasattr(__import__('torch'), 'cuda') and __import__('torch').cuda.is_available():
+                try:
+                    current_cc = __import__('torch').cuda.get_device_capability()
+                    if current_cc < min_cc:
+                        issues.append(f"GPU compute capability {current_cc} < required {min_cc} for TensorRT-RTX")
+                except:
+                    # Can't check compute capability, but don't fail validation
+                    pass
         
         # Some quantization combinations are problematic
         if Quantization.INT8 in quantizations and Quantization.FP32 in quantizations:
@@ -250,10 +378,17 @@ class DiffusionModelRegistry:
                 elif Quantization.FP32 in quantizations:
                     score += 2
             
-            # Backend preference (ONNX is more portable)
+            # Backend preference (TensorRT-RTX > ONNX > PyTorch for performance)
             backends = {comp.backend for comp in ws.components.values()}
-            if Backend.ONNX in backends:
-                score += 5
+            if Backend.TENSORRT_RTX in backends:
+                # Check if TensorRT-RTX requirements are met
+                is_valid, _ = self.validate_working_set(ws)
+                if is_valid:
+                    score += 15  # Highest preference for TensorRT-RTX
+                else:
+                    score -= 10  # Penalize invalid TensorRT-RTX configurations
+            elif Backend.ONNX in backends:
+                score += 5  # Second preference for ONNX portability
             
             scored_sets.append((score, ws))
         

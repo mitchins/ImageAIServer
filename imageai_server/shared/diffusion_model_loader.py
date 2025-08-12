@@ -16,14 +16,35 @@ from .diffusion_model_registry import (
     diffusion_registry, ModelDefinition, WorkingSet, Component, Backend, Quantization
 )
 
+# Lazy import ONNX dependencies only when needed
+ort = None
+ORTStableDiffusionPipeline = None
+ONNX_AVAILABLE = False
+
+def _ensure_onnx_imports():
+    """Lazy import ONNX dependencies only when ONNX backend is used."""
+    global ort, ORTStableDiffusionPipeline, ONNX_AVAILABLE
+    
+    if ONNX_AVAILABLE:
+        return  # Already imported
+    
+    try:
+        import onnxruntime as ort_module
+        from optimum.onnxruntime import ORTStableDiffusionPipeline as ORT_Pipeline
+        
+        ort = ort_module
+        ORTStableDiffusionPipeline = ORT_Pipeline
+        ONNX_AVAILABLE = True
+    except ImportError as e:
+        raise RuntimeError(f"ONNX Runtime not available: {e}")
+
 try:
-    import onnxruntime as ort
-    from optimum.onnxruntime import ORTStableDiffusionPipeline
-    ONNX_AVAILABLE = True
+    from .tensorrt_rtx_backend import TensorRTRTXDiffusionLoader, TensorRTRTXConfig
+    TENSORRT_RTX_AVAILABLE = True
 except ImportError:
-    ort = None
-    ORTStableDiffusionPipeline = None
-    ONNX_AVAILABLE = False
+    TensorRTRTXDiffusionLoader = None
+    TensorRTRTXConfig = None
+    TENSORRT_RTX_AVAILABLE = False
 
 try:
     from diffusers import (
@@ -82,22 +103,35 @@ class DiffusionModelLoader:
     
     def _choose_onnx_providers(self) -> list:
         """Choose ONNX execution providers."""
-        providers = []
-        if torch.cuda.is_available():
-            providers.append("CUDAExecutionProvider")
-        providers.append("CPUExecutionProvider")
-        return providers
+        from .provider_utils import get_standard_providers
+        return get_standard_providers(use_tensorrt=False)
     
     def _validate_environment(self, working_set: WorkingSet) -> Tuple[bool, str]:
         """Validate if the current environment can run the working set."""
         # Check if backend is available
         backend = next(iter({comp.backend for comp in working_set.components.values()}))
         
-        if backend == Backend.ONNX and not ONNX_AVAILABLE:
-            return False, "ONNX runtime not available"
+        if backend == Backend.ONNX:
+            try:
+                _ensure_onnx_imports()
+            except RuntimeError as e:
+                return False, str(e)
         
         if backend == Backend.PYTORCH and not DIFFUSERS_AVAILABLE:
             return False, "Diffusers library not available"
+        
+        if backend == Backend.TENSORRT_RTX:
+            if not TENSORRT_RTX_AVAILABLE:
+                return False, "TensorRT-RTX backend not available"
+            
+            # Create a test loader to check availability
+            try:
+                config = TensorRTRTXConfig(device=self._choose_device())
+                test_loader = TensorRTRTXDiffusionLoader(config)
+                if not test_loader.is_available():
+                    return False, "TensorRT-RTX environment requirements not met"
+            except Exception as e:
+                return False, f"TensorRT-RTX backend initialization failed: {e}"
         
         # Check GPU requirements
         requires_gpu = working_set.constraints.get("requires_gpu", False)
@@ -150,6 +184,8 @@ class DiffusionModelLoader:
             pipeline = self._load_pytorch_pipeline(model_def, working_set)
         elif backend == Backend.ONNX:
             pipeline = self._load_onnx_pipeline(model_def, working_set)
+        elif backend == Backend.TENSORRT_RTX:
+            pipeline = self._load_tensorrt_rtx_pipeline(model_def, working_set)
         else:
             raise ValueError(f"Unsupported backend: {backend}")
         
@@ -209,8 +245,7 @@ class DiffusionModelLoader:
     
     def _load_onnx_pipeline(self, model_def: ModelDefinition, working_set: WorkingSet) -> Any:
         """Load an ONNX-based pipeline."""
-        if not ONNX_AVAILABLE:
-            raise RuntimeError("ONNX runtime not available")
+        _ensure_onnx_imports()  # Lazy import ONNX dependencies
         
         providers = self._choose_onnx_providers()
         
@@ -226,6 +261,43 @@ class DiffusionModelLoader:
         
         return pipeline
     
+    def _load_tensorrt_rtx_pipeline(self, model_def: ModelDefinition, working_set: WorkingSet) -> Any:
+        """Load a TensorRT-RTX-based pipeline."""
+        if not TENSORRT_RTX_AVAILABLE:
+            raise RuntimeError("TensorRT-RTX backend not available")
+        
+        # Ensure clean TensorRT-RTX environment (no ONNX Runtime interference)
+        import os
+        old_providers = os.environ.get("ORT_PROVIDERS", None)
+        os.environ["ORT_PROVIDERS"] = "CPUExecutionProvider"  # Force ONNX Runtime to CPU only
+        
+        try:
+            device = self._choose_device()
+            
+            # Create TensorRT-RTX configuration
+            config = TensorRTRTXConfig(
+                device=device,
+                cache_dir="./tensorrt_cache",  # Use same cache dir as setup script
+                verbose=True,  # Can be made configurable
+                enable_runtime_cache=True
+            )
+            
+            # Create loader and load the pipeline
+            loader = TensorRTRTXDiffusionLoader(config)
+            pipeline, metadata = loader.load_model_pipeline(model_def.model_id, working_set)
+            
+            # Store the loader for later use
+            pipeline._tensorrt_loader = loader
+            
+            return pipeline
+            
+        finally:
+            # Restore original provider settings
+            if old_providers:
+                os.environ["ORT_PROVIDERS"] = old_providers
+            elif "ORT_PROVIDERS" in os.environ:
+                del os.environ["ORT_PROVIDERS"]
+    
     def unload_pipeline(self, model_id: str, working_set_name: Optional[str] = None):
         """Unload a pipeline to free memory."""
         cache_key = f"{model_id}:{working_set_name or 'default'}"
@@ -233,14 +305,20 @@ class DiffusionModelLoader:
         if cache_key in self._loaded_pipelines:
             pipeline, _ = self._loaded_pipelines[cache_key]
             
-            # Move to CPU to free GPU memory
-            if hasattr(pipeline, 'to'):
+            # Handle TensorRT-RTX pipeline cleanup
+            if hasattr(pipeline, '_tensorrt_loader'):
+                logger.info(f"Cleaning up TensorRT-RTX pipeline {cache_key}")
+                pipeline._tensorrt_loader.cleanup()
+            elif hasattr(pipeline, 'to'):
+                # Move PyTorch/ONNX pipeline to CPU to free GPU memory
                 pipeline.to('cpu')
             
             del self._loaded_pipelines[cache_key]
             logger.info(f"Unloaded pipeline {cache_key}")
             
             # Force garbage collection
+            import gc
+            gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
     

@@ -106,6 +106,16 @@ models:
             available: true
             model_path: "apple/coreml-stable-diffusion-xl-base"  # Apple's official CoreML SDXL
             runtime_requirements: ["coreml"]
+      tensorrt_rtx:
+        base_model: "stabilityai/stable-diffusion-xl-base-1.0"
+        runtime_requirements: ["tensorrt-rtx"]
+        quantizations:
+          bf16:
+            memory: "~4GB VRAM"
+            description: "TensorRT-RTX BF16, 3-5x faster than PyTorch, optimized engines"
+            available: true
+            model_path: "local"  # Uses local NVIDIA engines
+            runtime_requirements: ["tensorrt-rtx"]
 
   sdxl-turbo:
     name: "Stable Diffusion XL Turbo"
@@ -205,6 +215,11 @@ model_id_mapping:
   "sdxl-tensorrt": ["sdxl", "tensorrt", "fp16"]
   "sdxl-turbo-tensorrt": ["sdxl-turbo", "tensorrt", "fp16"]
   
+  # TensorRT-RTX models (NVIDIA optimized)
+  "sdxl-tensorrt-rtx": ["sdxl", "tensorrt_rtx", "bf16"]
+  "sdxl-tensorrt_rtx": ["sdxl", "tensorrt_rtx", "bf16"]
+  "sdxl-tensorrt_rtx:bf16": ["sdxl", "tensorrt_rtx", "bf16"]
+  
   # CoreML models
   "sd15-coreml": ["sd15", "coreml", "fp16"]
   "sdxl-coreml": ["sdxl", "coreml", "fp16"]
@@ -221,10 +236,12 @@ ui_config:
     pytorch: "PyTorch (GPU)"
     onnx: "ONNX (CPU/GPU)"
     tensorrt: "TensorRT (GPU)"
+    tensorrt_rtx: "TensorRT-RTX (GPU Optimized)"
     coreml: "CoreML (Apple Silicon)"
   
   quantization_display:
     fp16: "FP16"
+    bf16: "BF16"
     q8: "Q8 (8-bit)"
     q4: "Q4 (4-bit)"
 

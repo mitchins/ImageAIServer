@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException, Request
@@ -12,6 +13,19 @@ import time
 import psutil
 from .shared.manage_cache import list_cached_entries
 from .shared.model_types import ModelType
+
+# Setup TensorRT-RTX environment if available
+def _setup_tensorrt_rtx_environment():
+    """Setup TensorRT-RTX environment variables at server startup."""
+    trt_rtx_lib = "/data/nvidia/TensorRT-RTX-1.0.0.21/targets/x86_64-linux-gnu/lib"
+    if os.path.exists(trt_rtx_lib):
+        current_ld_path = os.environ.get("LD_LIBRARY_PATH", "")
+        if trt_rtx_lib not in current_ld_path:
+            os.environ["LD_LIBRARY_PATH"] = f"{trt_rtx_lib}:{current_ld_path}"
+        os.environ["POLYGRAPHY_USE_TENSORRT_RTX"] = "1"
+        print(f"✓ TensorRT-RTX environment configured")
+
+_setup_tensorrt_rtx_environment()
 
 logger = logging.getLogger(__name__)
 app = FastAPI(

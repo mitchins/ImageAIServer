@@ -220,24 +220,30 @@ def get_sd15_tensorrt():
     return _sd15_tensorrt
 
 def get_sdxl_tensorrt():
-    """Load SDXL with TensorRT optimization and dynamic engines"""
+    """Load SDXL with TensorRT-RTX optimization (native .plan engines)"""
     global _sdxl_tensorrt
     if _sdxl_tensorrt is None:
-        if not ONNX_AVAILABLE or OnnxStableDiffusionXLPipeline is None:
+        print(f"🚀 [DEBUG] Loading SDXL TensorRT-RTX with native engines")
+        
+        # Use our new TensorRT-RTX backend with diffusion model loader
+        from ..shared.diffusion_model_loader import DiffusionModelLoader
+        
+        try:
+            loader = DiffusionModelLoader()
+            # Load SDXL with tensorrt_rtx_bf16 working set
+            _sdxl_tensorrt, metadata = loader.load_pipeline("sdxl", "tensorrt_rtx_bf16")
+            
+            print(f"✅ [DEBUG] SDXL TensorRT-RTX loaded successfully")
+            print(f"   Backend: {metadata.get('backend', 'unknown')}")
+            print(f"   Working set: {metadata.get('working_set', 'unknown')}")
+            
+        except Exception as e:
+            print(f"❌ [DEBUG] Failed to load SDXL TensorRT-RTX: {e}")
             raise HTTPException(
                 status_code=503,
-                detail="ONNX SDXL is not available. Install optimum[onnxruntime] to use TensorRT SDXL models."
+                detail=f"SDXL TensorRT-RTX not available: {e}"
             )
             
-        # Use runtime_manager for optimal TensorRT configuration
-        providers = get_optimal_onnx_config()
-        print(f"🚀 [DEBUG] Loading SDXL TensorRT with providers: {providers}")
-        
-        _sdxl_tensorrt = OnnxStableDiffusionXLPipeline.from_pretrained(
-            "imgailab/sdxl-onnx-cpu",
-            provider=providers
-        )
-        print(f"✅ [DEBUG] SDXL TensorRT loaded successfully")
     return _sdxl_tensorrt
 
 def get_sdxl_turbo_tensorrt():
@@ -627,6 +633,52 @@ def _gen_sdxl_onnx(pipe, prompt, width, height, negative_prompt, n, **_):
         ).images[0])
     return imgs
 
+def _gen_sdxl_tensorrt_rtx(pipe, prompt, width, height, negative_prompt, n, **_):
+    """Adapter for TensorRT-RTX SDXL pipeline (different API than diffusers)"""
+    print(f"🔍 [DEBUG] TensorRT-RTX adapter called")
+    print(f"   Pipeline type: {type(pipe).__name__}")
+    
+    # Check for NVIDIA SDXL pipeline (our working implementation)
+    if hasattr(pipe, 'engines_activated'):
+        print(f"   NVIDIA pipeline - Engines activated: {pipe.engines_activated}")
+        if not pipe.engines_activated:
+            print(f"⚠️ [DEBUG] NVIDIA engines not activated")
+            raise RuntimeError("NVIDIA TensorRT engines not activated")
+    else:
+        # Fallback check for other pipeline types
+        print(f"   Other pipeline - Has engines: {hasattr(pipe, 'engines') and bool(getattr(pipe, 'engines', None))}")
+        if not (hasattr(pipe, 'engines') and getattr(pipe, 'engines', None)):
+            print(f"⚠️ [DEBUG] Engines not loaded, checking for auto-loader...")
+            raise RuntimeError("TensorRT engines not loaded - backend auto-loading failed")
+    
+    imgs = []
+    for _ in range(n):
+        # TensorRT-RTX uses .infer() method instead of __call__
+        print(f"🎨 [DEBUG] Running inference {_ + 1}/{n}")
+        images_np, inference_time = pipe.infer(
+            prompt=prompt,
+            negative_prompt=negative_prompt or "",
+            width=width,
+            height=height,
+            batch_size=1,
+            num_inference_steps=25,
+            guidance_scale=8.0
+        )
+        print(f"✅ [DEBUG] Inference completed in {inference_time:.1f}ms")
+        
+        # Handle both PIL Images and numpy arrays from inference
+        from PIL import Image
+        if isinstance(images_np, list) and all(isinstance(img, Image.Image) for img in images_np):
+            # Already PIL Images (NVIDIA pipeline)
+            imgs.extend(images_np)
+        elif isinstance(images_np[0], Image.Image):
+            # Single PIL Image
+            imgs.append(images_np[0])
+        else:
+            # Numpy array - convert to PIL Image
+            imgs.append(Image.fromarray(images_np[0]))
+    return imgs
+
 def _gen_sdxl_turbo_onnx(pipe, prompt, width, height, negative_prompt, n, **_):
     imgs = []
     for _ in range(n):
@@ -924,7 +976,8 @@ PIPE_REGISTRY = {
     **({'sdxl-turbo-onnx': (get_sdxl_turbo_onnx_fp32, _gen_sdxl_turbo_onnx)} if ONNX_AVAILABLE and OnnxStableDiffusionXLPipeline else {}),
     # TensorRT models - Same ONNX repos but with TensorRT optimization
     **({'sd15-tensorrt': (get_sd15_tensorrt, _gen_sd15_onnx)} if ONNX_AVAILABLE else {}),
-    **({'sdxl-tensorrt': (get_sdxl_tensorrt, _gen_sdxl_onnx)} if ONNX_AVAILABLE and OnnxStableDiffusionXLPipeline else {}),
+    # TensorRT-RTX models - Native .plan engines (no ONNX dependency)
+    "sdxl-tensorrt": (get_sdxl_tensorrt, _gen_sdxl_tensorrt_rtx),
     **({'sdxl-turbo-tensorrt': (get_sdxl_turbo_tensorrt, _gen_sdxl_turbo_onnx)} if ONNX_AVAILABLE and OnnxStableDiffusionXLPipeline else {}),
     # CoreML models - Apple Silicon optimized 
     **({'sd15-coreml': (get_sd15_coreml, _gen_sd15_coreml)} if COREML_AVAILABLE else {}),
