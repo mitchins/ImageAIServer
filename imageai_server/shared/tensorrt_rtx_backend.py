@@ -92,30 +92,29 @@ class TensorRTRTXBackend(ModelBackend):
                 logger.warning(f"TensorRT-RTX requires compute capability >= 8.0, found {compute_capability}")
                 return False
                 
-            # Check if we have local engines (for development)
-            cache_dir = Path(f"{self.config.cache_dir}/engines")
-            local_identifier = f"sdxl-bf16-{self._get_gpu_architecture()}"
-            local_engine_path = cache_dir / local_identifier
+            # Check if GPU architecture is supported
+            arch = self._get_gpu_architecture()
+            if not arch:
+                logger.warning("GPU architecture not supported for TensorRT-RTX engines")
+                return False
             
-            if local_engine_path.exists() and list(local_engine_path.glob("*.plan")):
-                logger.debug(f"Found local engines: {local_engine_path}")
+            # Check if we can get engines for this architecture
+            try:
+                # Try to get HuggingFace repo name (this validates architecture)
+                repo_name = self._get_hf_repo_name("sdxl", "bf16")
+                logger.debug(f"TensorRT-RTX engines available from: {repo_name}")
                 return True
+            except Exception as e:
+                logger.warning(f"TensorRT-RTX engines not available: {e}")
                 
-            # Check if engine manager can provide engines (HuggingFace download)
-            if hasattr(self, 'engine_manager'):
-                try:
-                    available_engines = self.engine_manager.get_available_engines("sdxl")
-                    if available_engines:
-                        logger.debug(f"Found {len(available_engines)} remote engines available")
-                        return True
-                except Exception:
-                    pass  # Continue to fallback check
-                
-            # Fallback: check if our NVIDIA SDXL pipeline can be created
-            # This means we have the necessary components even without engines
-            from ..tensorrt.nvidia_sdxl_pipeline import NVIDIASDXLPipeline
-            logger.debug("NVIDIA TensorRT-RTX SDXL pipeline available")
-            return True
+            # Fallback: check if our demo components are available
+            try:
+                from ..tensorrt.nvidia_sdxl_pipeline import NVIDIASDXLPipeline
+                logger.debug("NVIDIA TensorRT-RTX SDXL pipeline available as fallback")
+                return True
+            except ImportError:
+                logger.warning("NVIDIA TensorRT-RTX demo components not available")
+                return False
             
         except ImportError as e:
             logger.warning(f"TensorRT dependencies not available: {e}")
@@ -125,16 +124,75 @@ class TensorRTRTXBackend(ModelBackend):
             return False
     
     def _get_gpu_architecture(self) -> str:
-        """Get GPU architecture string."""
+        """Get GPU architecture string with blackwell support and future compatibility."""
         major, minor = torch.cuda.get_device_capability()
-        compute_cap = major + minor / 10.0
         
-        if compute_cap >= 8.9:
-            return "ada"
-        elif compute_cap >= 8.0:
-            return "ampere"
+        if major == 8:
+            if minor >= 9:  # Ada Lovelace
+                return "ada"
+            else:  # Ampere
+                return "ampere"
+        elif major >= 9:  # Blackwell and future
+            return "blackwell"
+        else:  # Turing and older - not supported
+            return None  # Will cause engines to be unavailable
+    
+    def _get_supported_quantizations(self) -> List[str]:
+        """Get supported quantizations for current GPU architecture."""
+        arch = self._get_gpu_architecture()
+        if arch == "ampere":
+            return ["bf16"]
+        elif arch == "ada":
+            return ["bf16", "fp8"]
+        elif arch == "blackwell":
+            return ["bf16", "fp8", "fp4"]
         else:
-            return "unknown"
+            return []  # Turing and older not supported
+    
+    def _get_hf_repo_name(self, model_id: str, quantization: str = "bf16") -> str:
+        """Get HuggingFace repository name for model and current architecture."""
+        arch = self._get_gpu_architecture()
+        if not arch:
+            raise RuntimeError("GPU architecture not supported for TensorRT-RTX engines")
+        return f"imgailab/{model_id}-{quantization}-{arch}"
+    
+    def _download_engine_repo(self, model_id: str, quantization: str = "bf16") -> Path:
+        """Download and cache TensorRT-RTX engines from HuggingFace."""
+        repo_name = self._get_hf_repo_name(model_id, quantization)
+        cache_dir = Path(self.config.cache_dir) / "hf_engines" / repo_name.replace("/", "_")
+        
+        # Check if already cached
+        if cache_dir.exists() and list(cache_dir.glob("*.plan")):
+            logger.debug(f"Using cached engines: {cache_dir}")
+            return cache_dir
+        
+        logger.info(f"Downloading TensorRT-RTX engines from {repo_name}")
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        try:
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id=repo_name,
+                local_dir=cache_dir,
+                token=self.config.hf_token or os.environ.get("HF_TOKEN"),
+                local_dir_use_symlinks=False  # Copy files instead of symlinks
+            )
+            
+            # Verify engines were downloaded
+            engine_files = list(cache_dir.glob("*.plan"))
+            if not engine_files:
+                raise RuntimeError(f"No engine files found in {repo_name}")
+            
+            logger.info(f"Downloaded {len(engine_files)} engine files to {cache_dir}")
+            return cache_dir
+            
+        except Exception as e:
+            logger.error(f"Failed to download engines from {repo_name}: {e}")
+            # Clean up failed download
+            if cache_dir.exists():
+                import shutil
+                shutil.rmtree(cache_dir)
+            raise RuntimeError(f"Engine download failed: {e}")
     
     def get_supported_models(self) -> List[str]:
         """Return list of model identifiers supported by this backend."""
@@ -194,55 +252,50 @@ class TensorRTRTXBackend(ModelBackend):
         return pipeline, self._get_pipeline_metadata(working_set)
     
     def _create_sdxl_pipeline(self, working_set: WorkingSet):
-        """Create SDXL TensorRT pipeline using NVIDIA's proven implementation."""
+        """Create SDXL TensorRT pipeline using our HuggingFace engines."""
         from ..tensorrt.nvidia_sdxl_pipeline import NVIDIASDXLPipeline
         
         # Get quantization from working set
         from .diffusion_model_registry import Component
-        quantization = working_set.components[Component.UNET].quantization.value  # Use UNet quantization
-        # TensorRT-RTX natively supports BF16 - use as-is
+        quantization = working_set.components[Component.UNET].quantization.value
         
-        # Get engine path (try local cache first, then auto-download)
+        # Validate quantization is supported for current architecture
+        supported_quants = self._get_supported_quantizations()
+        if quantization not in supported_quants:
+            raise RuntimeError(f"Quantization {quantization} not supported on {self._get_gpu_architecture()}. Supported: {supported_quants}")
+        
         engine_base_path = None
         
-        # Check NVIDIA demo engine location FIRST (known working)
-        nvidia_engine_path = Path("/data/nvidia/sdxl_tensorrt_rtx/engines_xl_b1_1024")
+        logger.info(f"🔍 SDXL Engine path selection for {quantization} on {self._get_gpu_architecture()}:")
         
-        # Check for local engines second (for development)  
-        local_cache_dir = Path(f"{self.config.cache_dir}/engines")
-        local_identifier = f"sdxl-{quantization}-{self.engine_manager.local_architecture.value}"
-        local_engine_path = local_cache_dir / local_identifier
+        # 1. Try HuggingFace engines (PRIMARY - our optimized engines)
+        try:
+            hf_engine_path = self._download_engine_repo("sdxl", quantization)
+            if hf_engine_path.exists() and list(hf_engine_path.glob("*.plan")):
+                engine_base_path = str(hf_engine_path)
+                logger.info(f"✓ Using HuggingFace engines: {engine_base_path}")
+        except Exception as e:
+            logger.warning(f"HuggingFace engine download failed: {e}")
         
-        logger.info(f"🔍 Engine path selection:")
-        logger.info(f"   NVIDIA path: {nvidia_engine_path} (exists: {nvidia_engine_path.exists()})")
-        logger.info(f"   Local path: {local_engine_path} (exists: {local_engine_path.exists()})")
-        
-        if nvidia_engine_path.exists():
-            nvidia_plans = list(nvidia_engine_path.glob("*.plan"))
-            logger.info(f"   NVIDIA .plan files: {len(nvidia_plans)}")
-        
-        if local_engine_path.exists():
-            local_plans = list(local_engine_path.glob("*.plan"))
-            logger.info(f"   Local .plan files: {len(local_plans)}")
-        
-        if nvidia_engine_path.exists() and list(nvidia_engine_path.glob("*.plan")):
-            engine_base_path = str(nvidia_engine_path)
-            logger.info(f"✓ Using NVIDIA demo engines: {engine_base_path}")
-        elif local_engine_path.exists() and list(local_engine_path.glob("*.plan")):
-            engine_base_path = str(local_engine_path)
-            logger.info(f"✓ Using local engines: {engine_base_path}")
-        elif self.config.auto_download_engines:
-            logger.info(f"Getting engines for SDXL with {quantization} quantization...")
-            engine_base_path = self.engine_manager.get_engine_path(
-                model_id="sdxl",
-                quantization=quantization,
-                auto_download=True
-            )
+        # 2. Fallback to local development engines  
+        if not engine_base_path:
+            local_cache_dir = Path(f"{self.config.cache_dir}/engines")
+            local_identifier = f"sdxl-{quantization}-{self._get_gpu_architecture()}"
+            local_engine_path = local_cache_dir / local_identifier
             
-            if engine_base_path:
-                logger.info(f"✓ Using downloaded engines: {engine_base_path}")
-            else:
-                logger.warning("Failed to get engines - falling back to manual setup")
+            if local_engine_path.exists() and list(local_engine_path.glob("*.plan")):
+                engine_base_path = str(local_engine_path)
+                logger.info(f"✓ Using local engines: {engine_base_path}")
+        
+        # 3. Final fallback to NVIDIA demo engines (may not match quantization)
+        if not engine_base_path:
+            nvidia_engine_path = Path("/data/nvidia/sdxl_tensorrt_rtx/engines_xl_b1_1024")
+            if nvidia_engine_path.exists() and list(nvidia_engine_path.glob("*.plan")):
+                engine_base_path = str(nvidia_engine_path)
+                logger.warning(f"⚠️  Using NVIDIA demo engines (may not match {quantization}): {engine_base_path}")
+        
+        if not engine_base_path:
+            raise RuntimeError(f"No SDXL engines found for {quantization} on {self._get_gpu_architecture()}. Available repos: {self._get_hf_repo_name('sdxl', quantization)}")
         
         # Get settings from working set
         guidance_scale = working_set.optimal_settings.get("guidance_scale", 8.0)
@@ -292,22 +345,65 @@ class TensorRTRTXBackend(ModelBackend):
         return pipeline
     
     def _create_flux_pipeline(self, model_id: str, working_set: WorkingSet):
-        """Create Flux TensorRT-RTX pipeline."""
-        from flux1.dev.pipelines.flux_pipeline import FluxPipeline
+        """Create Flux TensorRT-RTX pipeline using our HuggingFace engines."""
         
-        # Get precision from working set
-        precision = working_set.optimal_settings.get("precision", "bf16")
+        # Get quantization from working set  
+        from .diffusion_model_registry import Component
+        quantization = working_set.components[Component.UNET].quantization.value
+        
+        # Validate quantization is supported for current architecture
+        supported_quants = self._get_supported_quantizations()
+        if quantization not in supported_quants:
+            raise RuntimeError(f"Quantization {quantization} not supported on {self._get_gpu_architecture()}. Supported: {supported_quants}")
+        
+        logger.info(f"🔍 Flux Engine path selection for {model_id} {quantization} on {self._get_gpu_architecture()}:")
+        
+        # 1. Try HuggingFace engines (PRIMARY)
+        engine_base_path = None
+        try:
+            hf_engine_path = self._download_engine_repo(model_id, quantization)
+            if hf_engine_path.exists() and list(hf_engine_path.glob("*.plan")):
+                engine_base_path = str(hf_engine_path)
+                logger.info(f"✓ Using HuggingFace engines: {engine_base_path}")
+        except Exception as e:
+            logger.warning(f"HuggingFace engine download failed: {e}")
+        
+        # 2. Fallback to local development engines
+        if not engine_base_path:
+            local_cache_dir = Path(f"{self.config.cache_dir}/engines")
+            local_identifier = f"{model_id}-{quantization}-{self._get_gpu_architecture()}"
+            local_engine_path = local_cache_dir / local_identifier
+            
+            if local_engine_path.exists() and list(local_engine_path.glob("*.plan")):
+                engine_base_path = str(local_engine_path)
+                logger.info(f"✓ Using local engines: {engine_base_path}")
+        
+        if not engine_base_path:
+            raise RuntimeError(f"No {model_id} engines found for {quantization} on {self._get_gpu_architecture()}. Available repos: {self._get_hf_repo_name(model_id, quantization)}")
+        
+        # Import the Flux pipeline from our TensorRT-RTX demo
+        sys.path.append('/data/imagai/nvidia-demos/TensorRT-RTX/demo/flux1.dev')
+        from pipelines.flux_pipeline import FluxPipeline
         
         # Create pipeline with configuration
         pipeline = FluxPipeline(
-            cache_dir=self.config.cache_dir,
-            device=self.config.device,
+            cache_dir=str(engine_base_path),  # Point directly to engine directory
+            device=self.config.device or "cuda",
             verbose=self.config.verbose,
-            hf_token=self.config.hf_token,
+            hf_token=self.config.hf_token or os.environ.get("HF_TOKEN"),
             low_vram=self.config.low_vram,
-            enable_runtime_cache=self.config.enable_runtime_cache,
             guidance_scale=working_set.optimal_settings.get("guidance_scale", 3.5),
             num_inference_steps=working_set.optimal_settings.get("num_inference_steps", 50)
+        )
+        
+        # Load pre-built engines
+        logger.info(f"Loading pre-built {model_id} engines...")
+        pipeline.load_engines(
+            transformer_precision=quantization,
+            opt_batch_size=1,
+            opt_height=1024,
+            opt_width=1024,
+            shape_mode="static"
         )
         
         return pipeline
