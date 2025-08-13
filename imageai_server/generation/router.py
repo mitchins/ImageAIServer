@@ -120,6 +120,58 @@ def get_flux1():
         _flux1.enable_model_cpu_offload()
     return _flux1
 
+# TensorRT Flux variants
+_flux1_dev_tensorrt = None
+_flux1_schnell_tensorrt = None
+
+def get_flux1_dev_tensorrt():
+    """Load Flux.1-Dev with TensorRT-RTX backend."""
+    global _flux1_dev_tensorrt
+    if _flux1_dev_tensorrt is None:
+        try:
+            from ..shared.diffusion_model_loader import diffusion_loader
+            # Load using TensorRT-RTX backend with BF16 working set
+            _flux1_dev_tensorrt, metadata = diffusion_loader.load_pipeline("flux1-dev", "tensorrt_rtx_bf16")
+            logger.info(f"✅ Loaded Flux.1-Dev TensorRT: {metadata}")
+        except Exception as e:
+            logger.error(f"❌ Failed to load Flux.1-Dev TensorRT: {e}")
+            # Fallback to PyTorch
+            device = choose_device()
+            dtype = torch.float16
+            _flux1_dev_tensorrt = FluxPipeline.from_pretrained(
+                "black-forest-labs/FLUX.1-dev",
+                torch_dtype=dtype,
+            )
+            if device != "cpu":
+                _flux1_dev_tensorrt.to(device)
+            _flux1_dev_tensorrt.enable_model_cpu_offload()
+            logger.warning("⚠️  Using PyTorch fallback for Flux.1-Dev")
+    return _flux1_dev_tensorrt
+
+def get_flux1_schnell_tensorrt():
+    """Load Flux.1-Schnell with TensorRT-RTX backend."""
+    global _flux1_schnell_tensorrt
+    if _flux1_schnell_tensorrt is None:
+        try:
+            from ..shared.diffusion_model_loader import diffusion_loader
+            # Load using TensorRT-RTX backend with BF16 working set
+            _flux1_schnell_tensorrt, metadata = diffusion_loader.load_pipeline("flux1-schnell", "tensorrt_rtx_bf16")
+            logger.info(f"✅ Loaded Flux.1-Schnell TensorRT: {metadata}")
+        except Exception as e:
+            logger.error(f"❌ Failed to load Flux.1-Schnell TensorRT: {e}")
+            # Fallback to PyTorch
+            device = choose_device()
+            dtype = torch.float16
+            _flux1_schnell_tensorrt = FluxPipeline.from_pretrained(
+                "black-forest-labs/FLUX.1-schnell",
+                torch_dtype=dtype,
+            )
+            if device != "cpu":
+                _flux1_schnell_tensorrt.to(device)
+            _flux1_schnell_tensorrt.enable_model_cpu_offload()
+            logger.warning("⚠️  Using PyTorch fallback for Flux.1-Schnell")
+    return _flux1_schnell_tensorrt
+
 def get_qwen_image():
     global _qwen_image
     if _qwen_image is None:
@@ -597,6 +649,29 @@ def _gen_flux1(pipe, prompt, **_):
         max_sequence_length=256
     ).images[0]]
 
+def _gen_flux1_tensorrt(pipe, prompt, width=1024, height=1024, **kwargs):
+    """Adapter for Flux TensorRT backend."""
+    # Check if this is our TensorRT-RTX backend pipeline
+    if hasattr(pipe, 'generate_image'):
+        # Use TensorRT backend generate_image method
+        return pipe.generate_image(
+            prompt=prompt,
+            width=width,
+            height=height,
+            num_inference_steps=kwargs.get('num_inference_steps', 50),
+            guidance_scale=kwargs.get('guidance_scale', 3.5),
+            seed=kwargs.get('seed')
+        )
+    else:
+        # Fallback to standard PyTorch pipeline
+        return [pipe(
+            prompt,
+            width=width,
+            height=height,
+            guidance_scale=kwargs.get('guidance_scale', 3.5),
+            num_inference_steps=kwargs.get('num_inference_steps', 50)
+        ).images[0]]
+
 def _gen_qwen_image(pipe, prompt, width, height, negative_prompt, **_):
     return [pipe(
         prompt=prompt,
@@ -836,12 +911,60 @@ MODEL_METADATA = {
         "memory_requirement": "~8GB VRAM",
         "quantization": "FP16"
     },
+    "sdxl-tensorrt": {
+        "engine": "tensorrt",
+        "supports_negative_prompt": True,
+        "max_resolution": 1536,
+        "default_resolution": 1024,
+        "min_resolution": 512,
+        "display_name": "Stable Diffusion XL (TensorRT)",
+        "description": "TensorRT-RTX optimized SDXL, ~2x faster",
+        "memory_requirement": "~4GB VRAM",
+        "quantization": "BF16"
+    },
     "flux1-schnell": {
         "engine": "pytorch", 
         "supports_negative_prompt": False,
         "max_resolution": 1024,
         "default_resolution": 1024,
-        "min_resolution": 256
+        "min_resolution": 256,
+        "display_name": "FLUX.1 Schnell",
+        "description": "Fast 4-step inference, no negative prompts",
+        "memory_requirement": "~16GB VRAM",
+        "quantization": "BF16"
+    },
+    "flux1-dev": {
+        "engine": "tensorrt",
+        "supports_negative_prompt": False,
+        "max_resolution": 1024,
+        "default_resolution": 1024,
+        "min_resolution": 256,
+        "display_name": "FLUX.1 Dev (TensorRT)",
+        "description": "High quality TensorRT-RTX optimized, 50 steps",
+        "memory_requirement": "~8GB VRAM",
+        "quantization": "BF16"
+    },
+    "flux1-dev-tensorrt": {
+        "engine": "tensorrt",
+        "supports_negative_prompt": False,
+        "max_resolution": 1024,
+        "default_resolution": 1024,
+        "min_resolution": 256,
+        "display_name": "FLUX.1 Dev (TensorRT)",
+        "description": "High quality TensorRT-RTX optimized, 50 steps",
+        "memory_requirement": "~8GB VRAM",
+        "quantization": "BF16"
+    },
+    "flux1-schnell-tensorrt": {
+        "engine": "tensorrt",
+        "supports_negative_prompt": False,
+        "max_resolution": 1024,
+        "default_resolution": 1024,
+        "min_resolution": 256,
+        "display_name": "FLUX.1 Schnell (TensorRT)",
+        "description": "Ultra-fast TensorRT-RTX optimized, 4 steps",
+        "memory_requirement": "~8GB VRAM", 
+        "quantization": "BF16"
     },
     "qwen-image": {
         "engine": "pytorch",
@@ -968,6 +1091,7 @@ MODEL_METADATA = {
 PIPE_REGISTRY = {
     "sdxl": (get_sdxl, _gen_sdxl),
     "flux1-schnell": (get_flux1, _gen_flux1),
+    "flux1-dev": (get_flux1_dev_tensorrt, _gen_flux1_tensorrt),  # Flux.1-Dev uses TensorRT by default
     "qwen-image": (get_qwen_image, _gen_qwen_image),
     "sdxl-turbo": (get_sdxl_turbo, _gen_sdxl_turbo),
     # ONNX models - FP32 controlled repos
@@ -976,8 +1100,10 @@ PIPE_REGISTRY = {
     **({'sdxl-turbo-onnx': (get_sdxl_turbo_onnx_fp32, _gen_sdxl_turbo_onnx)} if ONNX_AVAILABLE and OnnxStableDiffusionXLPipeline else {}),
     # TensorRT models - Same ONNX repos but with TensorRT optimization
     **({'sd15-tensorrt': (get_sd15_tensorrt, _gen_sd15_onnx)} if ONNX_AVAILABLE else {}),
-    # TensorRT-RTX models - Native .plan engines (no ONNX dependency)
+    # TensorRT models - Native .plan engines (simplified naming)
     "sdxl-tensorrt": (get_sdxl_tensorrt, _gen_sdxl_tensorrt_rtx),
+    "flux1-dev-tensorrt": (get_flux1_dev_tensorrt, _gen_flux1_tensorrt),
+    "flux1-schnell-tensorrt": (get_flux1_schnell_tensorrt, _gen_flux1_tensorrt),
     **({'sdxl-turbo-tensorrt': (get_sdxl_turbo_tensorrt, _gen_sdxl_turbo_onnx)} if ONNX_AVAILABLE and OnnxStableDiffusionXLPipeline else {}),
     # CoreML models - Apple Silicon optimized 
     **({'sd15-coreml': (get_sd15_coreml, _gen_sd15_coreml)} if COREML_AVAILABLE else {}),

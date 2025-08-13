@@ -172,9 +172,9 @@ models:
             note: "Conversion has batch size compatibility issues - use ONNX or TensorRT instead"
             runtime_requirements: ["coreml"]
 
-  flux1:
+  flux1-schnell:
     name: "FLUX.1 Schnell"
-    description: "Excellent for complex artistic prompts"
+    description: "Fast 4-step inference, excellent for complex artistic prompts"
     supports_negative_prompt: false
     default_resolution: 1024
     min_resolution: 256
@@ -185,7 +185,7 @@ models:
         runtime_requirements: ["pytorch-cuda", "pytorch-mps"]
         quantizations:
           fp16:
-            memory: "~24GB VRAM"
+            memory: "~16GB VRAM"
             description: "Best quality for complex artistic prompts"
             available: true
             runtime_requirements: ["pytorch-cuda"]
@@ -195,6 +195,44 @@ models:
             available: true
             model_path: "imgailab/flux1-torch-int8"
             runtime_requirements: ["pytorch-cuda", "pytorch-mps"]
+      tensorrt_rtx:
+        base_model: "black-forest-labs/FLUX.1-schnell"
+        runtime_requirements: ["tensorrt-rtx"]
+        quantizations:
+          bf16:
+            memory: "~8GB VRAM"
+            description: "TensorRT-RTX BF16, ultra-fast 4-step inference"
+            available: true
+            model_path: "imgailab/flux1-schnell-bf16-ampere"
+            runtime_requirements: ["tensorrt-rtx"]
+
+  flux1-dev:
+    name: "FLUX.1 Dev"
+    description: "High quality diffusion model, 50-step inference"
+    supports_negative_prompt: false
+    default_resolution: 1024
+    min_resolution: 256
+    max_resolution: 1024
+    backends:
+      pytorch:
+        base_model: "black-forest-labs/FLUX.1-dev"
+        runtime_requirements: ["pytorch-cuda", "pytorch-mps"]
+        quantizations:
+          fp16:
+            memory: "~24GB VRAM"
+            description: "Highest quality for complex artistic prompts"
+            available: true
+            runtime_requirements: ["pytorch-cuda"]
+      tensorrt_rtx:
+        base_model: "black-forest-labs/FLUX.1-dev"
+        runtime_requirements: ["tensorrt-rtx"]
+        quantizations:
+          bf16:
+            memory: "~8GB VRAM"
+            description: "TensorRT-RTX BF16, high quality with fast inference"
+            available: true
+            model_path: "imgailab/flux1-dev-bf16-ampere"
+            runtime_requirements: ["tensorrt-rtx"]
       # Note: FLUX.1 ONNX not yet supported by optimum library
       # Note: FLUX.1 CoreML not yet available
 
@@ -208,12 +246,17 @@ model_id_mapping:
   "sdxl-turbo": ["sdxl-turbo", "pytorch", "fp16"]
   "sdxl-turbo-onnx": ["sdxl-turbo", "onnx", "fp32"]
   "sdxl-turbo-onnx:fp32": ["sdxl-turbo", "onnx", "fp32"]  # Alternative format
-  "flux1-schnell": ["flux1", "pytorch", "fp16"]
+  "flux1-schnell": ["flux1-schnell", "pytorch", "fp16"]
+  "flux1-dev": ["flux1-dev", "tensorrt_rtx", "bf16"]  # Default to TensorRT
   
   # TensorRT models
   "sd15-tensorrt": ["sd15", "tensorrt", "fp16"]
   "sdxl-tensorrt": ["sdxl", "tensorrt", "fp16"]
   "sdxl-turbo-tensorrt": ["sdxl-turbo", "tensorrt", "fp16"]
+  
+  # Flux TensorRT variants
+  "flux1-dev-tensorrt": ["flux1-dev", "tensorrt_rtx", "bf16"]
+  "flux1-schnell-tensorrt": ["flux1-schnell", "tensorrt_rtx", "bf16"]
   
   # TensorRT-RTX models (NVIDIA optimized)
   "sdxl-tensorrt-rtx": ["sdxl", "tensorrt_rtx", "bf16"]
@@ -228,7 +271,7 @@ model_id_mapping:
   "sd15-pytorch:int8": ["sd15", "pytorch", "int8"]
   "sdxl-pytorch:int8": ["sdxl", "pytorch", "int8"]
   "sdxl-turbo-pytorch:int8": ["sdxl-turbo", "pytorch", "int8"]
-  "flux1-pytorch:int8": ["flux1", "pytorch", "int8"]
+  "flux1-pytorch:int8": ["flux1-schnell", "pytorch", "int8"]
 
 # UI display configuration
 ui_config:
