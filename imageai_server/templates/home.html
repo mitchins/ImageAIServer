@@ -196,7 +196,7 @@ Promise.all([
     
     // GPU status removed - now part of backend descriptions
     
-    // Build system status
+    // Build system status with GPU device assignment
     let systemInfo = '';
     if (systemData) {
         const uptime = systemData.uptime_hours ? `${systemData.uptime_hours.toFixed(1)}h` : 'Unknown';
@@ -205,7 +205,25 @@ Promise.all([
     } else {
         systemInfo = 'Status unavailable';
     }
-    document.getElementById('system-status').innerHTML = systemInfo;
+    
+    // Fetch and display GPU device assignment
+    fetch('/v1/models/generation/gpu-status')
+        .then(response => response.json())
+        .then(gpuData => {
+            let gpuAssignment = '';
+            if (gpuData && gpuData.device_assignment) {
+                const t5Device = gpuData.device_assignment.T5_GPU_DEVICE;
+                const diffuserDevice = gpuData.device_assignment.DIFFUSER_GPU_DEVICE;
+                
+                if (t5Device !== '0' || diffuserDevice !== '0') {
+                    gpuAssignment = `, GPU Assignment: T5→GPU${t5Device}, Diffuser→GPU${diffuserDevice}`;
+                }
+            }
+            document.getElementById('system-status').innerHTML = systemInfo + gpuAssignment;
+        })
+        .catch(() => {
+            document.getElementById('system-status').innerHTML = systemInfo;
+        });
     
     // Show table, hide loading
     document.getElementById('backend-status-loading').style.display = 'none';

@@ -188,6 +188,38 @@ models:
       # Note: FLUX.1 ONNX not yet supported by optimum library
       # Note: FLUX.1 CoreML not yet available
 
+  flux1-dev:
+    name: "FLUX.1 Dev"
+    description: "Professional quality Flux model, slower but higher quality"
+    supports_negative_prompt: false
+    default_resolution: 1024
+    min_resolution: 256
+    max_resolution: 1024
+    backends:
+      tensorrt:
+        base_model: "black-forest-labs/FLUX.1-dev"
+        runtime_requirements: ["onnx-tensorrt"]
+        quantizations:
+          fp16:
+            memory: "~24GB VRAM"
+            description: "TensorRT-RTX optimized, best quality"
+            available: true
+            runtime_requirements: ["onnx-tensorrt"]
+          fp8:
+            memory: "~12GB VRAM" 
+            description: "TensorRT-RTX FP8, good quality/memory balance"
+            available: true
+            runtime_requirements: ["onnx-tensorrt"]
+      pytorch:
+        base_model: "black-forest-labs/FLUX.1-dev"
+        runtime_requirements: ["pytorch-cuda", "pytorch-mps"]
+        quantizations:
+          fp16:
+            memory: "~24GB VRAM"
+            description: "Best quality for professional use"
+            available: true
+            runtime_requirements: ["pytorch-cuda"]
+
 # Router ID mapping - how API model IDs map to internal config
 model_id_mapping:
   # FP16 models
@@ -199,6 +231,9 @@ model_id_mapping:
   "sdxl-turbo-onnx": ["sdxl-turbo", "onnx", "fp32"]
   "sdxl-turbo-onnx:fp32": ["sdxl-turbo", "onnx", "fp32"]  # Alternative format
   "flux1-schnell": ["flux1", "pytorch", "fp16"]
+  "flux1-dev": ["flux1-dev", "tensorrt", "fp16"]
+  "flux1-dev-fp8": ["flux1-dev", "tensorrt", "fp8"]
+  "flux1-dev-pytorch": ["flux1-dev", "pytorch", "fp16"]
   
   # TensorRT models
   "sd15-tensorrt": ["sd15", "tensorrt", "fp16"]

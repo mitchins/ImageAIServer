@@ -48,10 +48,34 @@ def choose_device():
         return "cuda"
     if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
         return "mps"
-    raise HTTPException(
-        status_code=503,
-        detail="No supported GPU backend available; image generation requires CUDA or MPS."
-    )
+
+# Helper for multi-GPU device assignment
+def assign_pipeline_devices(pipeline, fallback_device="cuda"):
+    """Assign pipeline components to different GPUs based on environment variables"""
+    import os
+    
+    # Get device assignments from environment variables
+    clip_device = f"cuda:{os.getenv('CLIP_GPU_DEVICE', '0')}"
+    t5_device = f"cuda:{os.getenv('T5_GPU_DEVICE', '0')}"
+    diffuser_device = f"cuda:{os.getenv('DIFFUSER_GPU_DEVICE', '0')}"
+    vae_device = f"cuda:{os.getenv('VAE_GPU_DEVICE', '0')}"
+    
+    try:
+        # Move components to assigned devices
+        if hasattr(pipeline, 'text_encoder') and pipeline.text_encoder is not None:
+            pipeline.text_encoder.to(clip_device)
+        if hasattr(pipeline, 'text_encoder_2') and pipeline.text_encoder_2 is not None:
+            pipeline.text_encoder_2.to(t5_device)
+        if hasattr(pipeline, 'transformer') and pipeline.transformer is not None:
+            pipeline.transformer.to(diffuser_device)
+        if hasattr(pipeline, 'vae') and pipeline.vae is not None:
+            pipeline.vae.to(vae_device)
+            
+        print(f"🔧 Multi-GPU Assignment: CLIP→{clip_device}, T5→{t5_device}, Diffuser→{diffuser_device}, VAE→{vae_device}")
+        
+    except Exception as e:
+        print(f"⚠️  Multi-GPU assignment failed, falling back to single device: {e}")
+        pipeline.to(fallback_device)
 
 # Helper to choose ONNX providers
 def choose_onnx_providers():
@@ -83,6 +107,9 @@ router_tag = "generation"
 # Lazy-loaded pipelines
 _sdxl = None
 _flux1 = None
+_flux1_dev_pytorch = None
+_flux1_dev_tensorrt = None
+_flux1_dev_fp8 = None
 _qwen_image = None
 _sdxl_turbo = None
 _sd15_onnx = None
@@ -116,9 +143,80 @@ def get_flux1():
             torch_dtype=dtype
         )
         if device != "cpu":
-            _flux1.to(device)
+            # Use multi-GPU assignment instead of single device
+            assign_pipeline_devices(_flux1, fallback_device=device)
         _flux1.enable_model_cpu_offload()
     return _flux1
+
+def get_flux1_dev_pytorch():
+    """Get Flux1.dev PyTorch pipeline"""
+    global _flux1_dev_pytorch
+    if _flux1_dev_pytorch is None:
+        device = choose_device()
+        dtype = torch.float16
+        _flux1_dev_pytorch = FluxPipeline.from_pretrained(
+            "black-forest-labs/FLUX.1-dev",
+            torch_dtype=dtype
+        )
+        if device != "cpu":
+            assign_pipeline_devices(_flux1_dev_pytorch, fallback_device=device)
+        _flux1_dev_pytorch.enable_model_cpu_offload()
+    return _flux1_dev_pytorch
+
+def get_flux1_dev_tensorrt():
+    """Get Flux1.dev TensorRT pipeline - uses TensorRT-RTX implementation"""
+    global _flux1_dev_tensorrt
+    if _flux1_dev_tensorrt is None:
+        import sys
+        import os
+        
+        # Add the TensorRT demo path
+        tensorrt_path = os.path.join(os.getcwd(), "nvidia-demos/TensorRT-RTX/demo")
+        if tensorrt_path not in sys.path:
+            sys.path.insert(0, tensorrt_path)
+        
+        # Clean import - no more path gymnastics!
+        from flux.pipelines.flux_pipeline import FluxPipeline as TensorRTFluxPipeline
+        
+        # Initialize TensorRT Flux pipeline with low VRAM mode
+        # Force device to cuda:0 for TensorRT engine compatibility
+        _flux1_dev_tensorrt = TensorRTFluxPipeline(
+            cache_dir="./demo_cache",
+            device="cuda:0",  # Force primary GPU for TensorRT engines
+            low_vram=True,  # Enable for memory efficiency
+            verbose=True
+        )
+        
+        print("✅ TensorRT-RTX Flux1.dev pipeline loaded successfully")
+    
+    return _flux1_dev_tensorrt
+
+def get_flux1_dev_fp8():
+    """Get Flux1.dev with FP8 quantization - uses TensorRT-RTX implementation"""
+    global _flux1_dev_fp8
+    if _flux1_dev_fp8 is None:
+        import sys
+        import os
+        
+        # Add the TensorRT demo path
+        tensorrt_path = os.path.join(os.getcwd(), "nvidia-demos/TensorRT-RTX/demo")
+        if tensorrt_path not in sys.path:
+            sys.path.insert(0, tensorrt_path)
+        
+        # Clean import
+        from flux.pipelines.flux_pipeline import FluxPipeline as TensorRTFluxPipeline
+        
+        # Initialize TensorRT Flux pipeline with low VRAM mode
+        _flux1_dev_fp8 = TensorRTFluxPipeline(
+            cache_dir="./demo_cache",
+            device="cuda:0",  # Force primary GPU for TensorRT engines
+            low_vram=True,
+            verbose=True
+        )
+        
+        print("✅ TensorRT-RTX Flux1.dev FP8 pipeline loaded successfully")
+    
+    return _flux1_dev_fp8
 
 def get_qwen_image():
     global _qwen_image
@@ -584,12 +682,116 @@ def _gen_sdxl_turbo(pipe, prompt, width, height, negative_prompt, n, **_):
     return imgs
 
 def _gen_flux1(pipe, prompt, **_):
+    # Optimized settings for Flux.1-schnell (fast variant)
     return [pipe(
         prompt,
-        guidance_scale=0.0,
-        num_inference_steps=4,
+        guidance_scale=0.0,  # Schnell works best with no guidance
+        num_inference_steps=4,  # Schnell is designed for 4 steps
         max_sequence_length=256
     ).images[0]]
+
+def _gen_flux1_dev_pytorch(pipe, prompt, **_):
+    # Optimized settings for Flux.1-dev (quality variant)
+    return [pipe(
+        prompt,
+        guidance_scale=3.5,  # Dev benefits from guidance
+        num_inference_steps=28,  # Dev needs more steps for quality
+        max_sequence_length=256
+    ).images[0]]
+
+def _gen_flux1_tensorrt(pipe, prompt, width=1024, height=1024, **_):
+    """TensorRT-RTX Flux adapter - uses different interface"""
+    import tempfile
+    import os
+    from PIL import Image
+    
+    # TensorRT pipeline needs engines loaded first (engines should exist in demo_cache)
+    if not hasattr(pipe, '_engines_loaded'):
+        # Force cleanup first to ensure clean state
+        pipe.cleanup()
+        
+        pipe.load_engines(
+            transformer_precision="bf16",
+            opt_batch_size=1,
+            opt_height=height,
+            opt_width=width,
+            shape_mode="static",
+        )
+        pipe.load_resources(
+            batch_size=1,
+            height=height,
+            width=width,
+        )
+        pipe._engines_loaded = True
+    
+    # Create temp directory for output
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # TensorRT-RTX pipeline uses infer() method and saves to file
+        pipe.infer(
+            prompt=prompt,
+            save_path=temp_dir,
+            height=height,
+            width=width,
+            seed=None,
+            batch_size=1,
+            num_inference_steps=4,
+            guidance_scale=3.5,
+        )
+        
+        # Load the generated image from file
+        output_files = [f for f in os.listdir(temp_dir) if f.endswith(('.png', '.jpg', '.jpeg'))]
+        if output_files:
+            image_path = os.path.join(temp_dir, output_files[0])
+            return [Image.open(image_path)]
+        else:
+            raise RuntimeError("TensorRT pipeline did not generate any output images")
+
+def _gen_flux1_tensorrt_fp8(pipe, prompt, width=1024, height=1024, **_):
+    """TensorRT-RTX Flux adapter with FP8 precision"""
+    import tempfile
+    import os
+    from PIL import Image
+    
+    # TensorRT pipeline needs engines loaded first (FP8 engines need to be built)
+    if not hasattr(pipe, '_engines_loaded'):
+        # Force cleanup first to ensure clean state
+        pipe.cleanup()
+        
+        pipe.load_engines(
+            transformer_precision="fp8",  # Use FP8 for this variant
+            opt_batch_size=1,
+            opt_height=height,
+            opt_width=width,
+            shape_mode="static",
+        )
+        pipe.load_resources(
+            batch_size=1,
+            height=height,
+            width=width,
+        )
+        pipe._engines_loaded = True
+    
+    # Create temp directory for output
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # TensorRT-RTX pipeline uses infer() method and saves to file
+        pipe.infer(
+            prompt=prompt,
+            save_path=temp_dir,
+            height=height,
+            width=width,
+            seed=None,
+            batch_size=1,
+            num_inference_steps=4,
+            guidance_scale=3.5,
+        )
+        
+        # Load the generated image from file
+        output_files = [f for f in os.listdir(temp_dir) if f.endswith(('.png', '.jpg', '.jpeg'))]
+        if output_files:
+            image_path = os.path.join(temp_dir, output_files[0])
+            return [Image.open(image_path)]
+        else:
+            raise RuntimeError("TensorRT pipeline did not generate any output images")
 
 def _gen_qwen_image(pipe, prompt, width, height, negative_prompt, **_):
     return [pipe(
@@ -916,6 +1118,9 @@ MODEL_METADATA = {
 PIPE_REGISTRY = {
     "sdxl": (get_sdxl, _gen_sdxl),
     "flux1-schnell": (get_flux1, _gen_flux1),
+    "flux1-dev": (get_flux1_dev_tensorrt, _gen_flux1_tensorrt),
+    "flux1-dev-fp8": (get_flux1_dev_fp8, _gen_flux1_tensorrt_fp8),
+    "flux1-dev-pytorch": (get_flux1_dev_pytorch, _gen_flux1_dev_pytorch),
     "qwen-image": (get_qwen_image, _gen_qwen_image),
     "sdxl-turbo": (get_sdxl_turbo, _gen_sdxl_turbo),
     # ONNX models - FP32 controlled repos
@@ -988,6 +1193,49 @@ def get_loaded_models():
 def get_runtime_status():
     """Get current runtime status and model compatibility information."""
     return model_config.get_runtime_status()
+
+@router.get("/v1/models/generation/gpu-status")
+def get_gpu_status():
+    """Get GPU device assignment status and memory information."""
+    import os
+    
+    gpu_status = {
+        "device_assignment": {
+            "CLIP_GPU_DEVICE": os.getenv("CLIP_GPU_DEVICE", "0"),
+            "T5_GPU_DEVICE": os.getenv("T5_GPU_DEVICE", "0"),
+            "DIFFUSER_GPU_DEVICE": os.getenv("DIFFUSER_GPU_DEVICE", "0"),
+            "VAE_GPU_DEVICE": os.getenv("VAE_GPU_DEVICE", "0")
+        },
+        "assigned_devices": {
+            "clip_text_encoder": f"cuda:{os.getenv('CLIP_GPU_DEVICE', '0')}",
+            "t5_text_encoder": f"cuda:{os.getenv('T5_GPU_DEVICE', '0')}",
+            "transformer": f"cuda:{os.getenv('DIFFUSER_GPU_DEVICE', '0')}",
+            "vae_decoder": f"cuda:{os.getenv('VAE_GPU_DEVICE', '0')}"
+        },
+        "cuda_available": torch.cuda.is_available(),
+        "cuda_device_count": torch.cuda.device_count() if torch.cuda.is_available() else 0
+    }
+    
+    # Add memory info for each GPU if CUDA is available
+    if torch.cuda.is_available():
+        gpu_status["gpu_memory"] = {}
+        for i in range(torch.cuda.device_count()):
+            try:
+                torch.cuda.set_device(i)
+                total_memory = torch.cuda.get_device_properties(i).total_memory
+                allocated_memory = torch.cuda.memory_allocated(i)
+                free_memory = total_memory - allocated_memory
+                
+                gpu_status["gpu_memory"][f"cuda:{i}"] = {
+                    "total_gb": round(total_memory / 1024**3, 2),
+                    "allocated_gb": round(allocated_memory / 1024**3, 2),
+                    "free_gb": round(free_memory / 1024**3, 2),
+                    "device_name": torch.cuda.get_device_name(i)
+                }
+            except Exception as e:
+                gpu_status["gpu_memory"][f"cuda:{i}"] = {"error": str(e)}
+    
+    return gpu_status
 
 @router.get("/v1/models/generation/optimal")
 def get_optimal_models(memory_efficient: bool = False):
